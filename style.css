@@ -1,0 +1,149 @@
+:root {
+    --bg-dark: #12161a;
+    --panel-bg: #1e252b;
+    --text-main: #e2e8f0;
+    --accent-green: #4ade80;
+    --accent-blue: #3b82f6;
+    --accent-red: #ef4444;
+    --border-color: #334155;
+}
+
+body {
+    background-color: var(--bg-dark);
+    color: var(--text-main);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+}
+
+.sequencer-container {
+    background: var(--panel-bg);
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    padding: 2rem;
+    width: 100%;
+    max-width: 480px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    text-align: center;
+}
+
+.sequencer-header h1 {
+    font-size: 1.75rem;
+    color: var(--accent-green);
+    margin: 0 0 0.25rem 0;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.sequencer-header h2 {
+    font-size: 0.875rem;
+    color: #94a3b8;
+    margin: 0 0 2rem 0;
+    font-weight: 400;
+}
+
+/* Status Widget */
+.status-panel {
+    background: rgba(0,0,0,0.25);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.status-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: #94a3b8;
+    margin-bottom: 0.25rem;
+}
+
+.status-value {
+    font-size: 1.25rem;
+    font-weight: bold;
+    transition: color 0.3s ease;
+}
+
+.mode-exploration { color: var(--accent-green); }
+.mode-quiet { color: var(--accent-blue); }
+.mode-battle { color: var(--accent-red); animation: pulse 1s infinite alternate; }
+
+/* Progress Bar Tracking */
+.progress-container {
+    margin-bottom: 2rem;
+    text-align: left;
+}
+
+.progress-label {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    margin-bottom: 0.5rem;
+}
+
+.progress-bar-wrapper {
+    background: #0f172a;
+    border-radius: 9999px;
+    height: 8px;
+    overflow: hidden;
+    width: 100%;
+}
+
+.progress-bar-fill {
+    background: var(--accent-green);
+    height: 100%;
+    width: 0%; /* Driven via JS requestAnimationFrame */
+}
+
+/* Controls Interaction Pad */
+.control-pad {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.btn {
+    background: #334155;
+    border: none;
+    border-radius: 6px;
+    color: var(--text-main);
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    padding: 1rem;
+    transition: all 0.2s ease;
+    text-align: left;
+}
+
+.btn:hover {
+    background: #475569;
+}
+
+.btn.active {
+    outline: 2px solid var(--accent-green);
+    background: #1e293b;
+}
+
+.danger-btn {
+    border: 1px solid rgba(239, 68, 68, 0.4);
+}
+.danger-btn:hover {
+    background: var(--accent-red);
+}
+.danger-btn.active {
+    outline: 2px solid var(--accent-red);
+    background: rgba(239, 68, 68, 0.2);
+}
+
+.sequencer-footer p {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-top: 1.5rem;
+    margin-bottom: 0;
+}
+
+@keyframes pulse {
+    from { opacity: 0.6; }
+    to { opacity: 1; }
+}

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hyrule Field Dynamic Audio Sequencer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="sequencer-container">
+        <header class="sequencer-header">
+            <h1>Hyrule Field</h1>
+            <h2>Koji Kondo Interactive Audio Simulator</h2>
+        </header>
+
+        <!-- Status Panel -->
+        <div class="status-panel">
+            <div class="status-label">Current Mode:</div>
+            <div id="current-state-display" class="status-value mode-exploration">Exploration (Day)</div>
+        </div>
+
+        <!-- 8-Bar Timing Progress Bar -->
+        <div class="progress-container">
+            <div class="progress-label">Next 8-Bar Transition Window</div>
+            <div class="progress-bar-wrapper">
+                <div id="transition-progress" class="progress-bar-fill"></div>
+            </div>
+        </div>
+
+        <!-- Control Buttons Pad -->
+        <div class="control-pad">
+            <button class="btn state-btn active" data-mode="EXPLORATION">
+                ☀️ Exploration (Day)
+            </button>
+            <button class="btn state-btn" data-mode="QUIET">
+                🌙 Quiet (Night/Rest)
+            </button>
+            <button class="btn state-btn danger-btn" data-mode="BATTLE">
+                ⚔️ Immediate Battle
+            </button>
+        </div>
+
+        <footer class="sequencer-footer">
+            <p>Click any mode to alter the musical sequencing in real-time.</p>
+        </footer>
+    </div>
+
+    <!-- Link your bundler's built JavaScript file or your main engine script here -->
+    <script type="module" src="main.js"></script>
+</body>
+</html>
