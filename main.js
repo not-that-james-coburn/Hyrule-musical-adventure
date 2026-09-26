@@ -1,3 +1,4 @@
+import * as Tone from 'tone';
 import { changeGameMode, getCurrentPlaybackState } from './sequencer.js';
 
 // Wire up the HTML buttons into your Tone.js execution environment
@@ -21,16 +22,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Smooth, high-performance rendering loop for the 8-bar countdown clock progress bar
   function renderProgressBar() {
-    if (Tone.Transport.state === 'running') {
-      // Get position formatted strings like "Measures:Beats:Sixteenths" (e.g., "4:2:1")
-      const position = Tone.Transport.position.split(':');
-      const measure = parseInt(position[0], 10);
-      
-      // Calculate how far along we are inside the current 8-measure cycle (0% to 100%)
-      const completedMeasuresInCycle = measure % 8;
-      const progressPercent = (completedMeasuresInCycle / 8) * 100;
-      
-      fillEl.style.width = `${progressPercent}%`;
+    const transport = Tone.getTransport();
+    if (transport && transport.state === 'running') {
+      // Get position formatted strings like "Measures:Beats:Sixteenths" (e.g., "4:2:1") or seconds
+      let progressPercent = 0;
+      if (typeof transport.position === 'string') {
+        const position = transport.position.split(':');
+        const measure = parseInt(position[0], 10) || 0;
+        const beats = parseFloat(position[1]) || 0;
+        const sixteenths = parseFloat(position[2]) || 0;
+
+        // Calculate total measures in current position
+        const totalMeasures = (measure % 8) + (beats / 4) + (sixteenths / 16);
+        progressPercent = (totalMeasures / 8) * 100;
+      } else if (typeof transport.seconds === 'number') {
+        // Fallback calculation using transport seconds & bpm
+        const bpm = transport.bpm ? transport.bpm.value : 90;
+        const secondsPer8Bars = (60 / bpm) * 4 * 8;
+        const currentCycleSeconds = transport.seconds % secondsPer8Bars;
+        progressPercent = (currentCycleSeconds / secondsPer8Bars) * 100;
+      }
+
+      fillEl.style.width = `${Math.min(Math.max(progressPercent, 0), 100)}%`;
 
       // Dynamically align text styling to update users when a state change switches over
       const currentPlaybackState = getCurrentPlaybackState();

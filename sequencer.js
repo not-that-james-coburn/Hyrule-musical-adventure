@@ -36,10 +36,11 @@ polySynth.volume.value = -6; // Attenuate decibels slightly to keep it clean
 
 // 4. The Conductor (The 8-Bar Scheduling Loop)
 function setupConductor() {
-  Tone.Transport.bpm.value = BPM;
+  const transport = Tone.getTransport();
+  transport.bpm.value = BPM;
 
   // Schedule a recurring event that triggers every 8 measures/bars
-  Tone.Transport.scheduleRepeat((time) => {
+  transport.scheduleRepeat((time) => {
     
     // Resolve pending state updates at the 8-bar boundary loop
     currentPlaybackState = nextPlaybackState;
@@ -55,6 +56,7 @@ function setupConductor() {
 
 // Helper function to read the JSON roadmap and queue notes on the transport timeline
 function scheduleMidiBlock(state, startTime) {
+  const transport = Tone.getTransport();
   const pool = blockMap[state];
   const chosenBlock = pool[Math.floor(Math.random() * pool.length)];
 
@@ -67,7 +69,7 @@ function scheduleMidiBlock(state, startTime) {
       const relativeNoteTime = note.time - chosenBlock.start;
       const exactScheduleTime = startTime + relativeNoteTime;
 
-      const eventId = Tone.Transport.schedule((scheduledTime) => {
+      const eventId = transport.schedule((scheduledTime) => {
         polySynth.triggerAttackRelease(note.name, note.duration, scheduledTime, note.velocity);
       }, exactScheduleTime);
 
@@ -82,19 +84,21 @@ export function getCurrentPlaybackState() {
 }
 
 export async function changeGameMode(newMode) {
+  const transport = Tone.getTransport();
+
   // Ensure AudioContext runs, starts, and loads the loop safely
-  if (Tone.context.state !== 'running') {
+  if (Tone.getContext().state !== 'running') {
     await Tone.start();
     console.log("Web Audio Context Activated!");
     
     // Setup the timeline conductor and start it up immediately
     setupConductor();
-    Tone.Transport.start();
+    transport.start();
     
     // Force play the initial block right now so the user doesn't wait 8 bars for sound
     currentPlaybackState = newMode;
     nextPlaybackState = newMode;
-    scheduleMidiBlock(newMode, Tone.Transport.seconds);
+    scheduleMidiBlock(newMode, transport.seconds);
     return;
   }
 
@@ -108,23 +112,20 @@ export async function changeGameMode(newMode) {
 }
 
 function triggerImmediateBattleOverride() {
-  const now = Tone.now();
+  const transport = Tone.getTransport();
 
   // 1. Immediately wipe out all upcoming scheduled notes from the timeline
-  activeScheduledEvents.forEach(eventId => Tone.Transport.clear(eventId));
+  activeScheduledEvents.forEach(eventId => transport.clear(eventId));
   activeScheduledEvents = [];
 
   // 2. Pivot engine state instantly
   currentPlaybackState = 'BATTLE';
   nextPlaybackState = 'BATTLE';
 
-  // 3. Snap the entry directly to the closest upcoming musical quarter beat
-  const nextBeat = Tone.Transport.quantizeFormat('4n'); 
-  
-  // 4. Fire up a battle block right away on that beat
-  scheduleMidiBlock('BATTLE', Tone.Transport.seconds + 0.1); 
+  // 3. Fire up a battle block right away
+  scheduleMidiBlock('BATTLE', transport.seconds + 0.05);
 
-  // 5. Reset global Transport timeline to align with the new 8-bar battle grid phase
-  Tone.Transport.position = "0:0:0";
+  // 4. Reset global Transport timeline to align with the new 8-bar battle grid phase
+  transport.position = "0:0:0";
 }
 
