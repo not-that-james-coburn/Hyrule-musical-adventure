@@ -1,5 +1,5 @@
 import * as Tone from 'tone';
-import midiData from './hyrule_field_midi.json'; 
+import midiData from './hyrule_field_midi.json' with { type: 'json' };
 
 // 1. Core State Configuration
 const BPM = midiData.header.bpm || 90; 
