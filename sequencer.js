@@ -89,25 +89,30 @@ export async function changeGameMode(newMode) {
   // Ensure AudioContext runs, starts, and loads the loop safely
   if (Tone.getContext().state !== 'running') {
     await Tone.start();
-    console.log("Web Audio Context Activated!");
+    console.log("Web Audio Context Activated! Audio state:", Tone.getContext().state);
     
     // Setup the timeline conductor and start it up immediately
     setupConductor();
     transport.start();
+    console.log("Tone.Transport started! Transport state:", transport.state);
     
     // Force play the initial block right now so the user doesn't wait 8 bars for sound
     currentPlaybackState = newMode;
     nextPlaybackState = newMode;
     scheduleMidiBlock(newMode, transport.seconds);
+    console.log(`Scheduled initial MIDI block for mode: ${newMode}`);
     return;
   }
 
+  console.log(`Mode change requested: ${newMode}. Current mode: ${currentPlaybackState}`);
   if (newMode === 'BATTLE') {
     // Koji Kondo's COMBAT OVERRIDE: Interrupt instantly
     triggerImmediateBattleOverride();
+    console.log("Immediate Battle Override triggered!");
   } else {
     // Quiet, Night, or regular Exploration modes queue up safely at the 8-bar mark
     nextPlaybackState = newMode;
+    console.log(`Queued transition to ${newMode} at next 8-bar boundary`);
   }
 }
 

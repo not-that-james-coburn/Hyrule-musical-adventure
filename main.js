@@ -20,10 +20,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  window.Tone = Tone; // Expose Tone for debugging
+
   // Smooth, high-performance rendering loop for the 8-bar countdown clock progress bar
   function renderProgressBar() {
     const transport = Tone.getTransport();
-    if (transport && transport.state === 'running') {
+    if (transport && (transport.state === 'started' || transport.state === 'running')) {
       // Get position formatted strings like "Measures:Beats:Sixteenths" (e.g., "4:2:1") or seconds
       let progressPercent = 0;
       if (typeof transport.position === 'string') {
