@@ -1,5 +1,5 @@
 import * as Tone from 'tone';
-import { changeGameMode, getCurrentPlaybackState, currentBlockStartTimeSec, currentBlockDurationSec } from './sequencer.js';
+import { changeGameMode, getCurrentPlaybackState, currentBlockStartTransportSec, currentBlockDurationSec } from './sequencer.js';
 
 // Wire up the HTML buttons into your Tone.js execution environment
 document.addEventListener('DOMContentLoaded', () => {
@@ -26,7 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderProgressBar() {
     const transport = Tone.getTransport();
     if (transport && (transport.state === 'started' || transport.state === 'running')) {
-      const elapsedInBlock = Math.max(0, transport.seconds - currentBlockStartTimeSec);
+      const elapsedInBlock = Math.max(0, transport.seconds - currentBlockStartTransportSec);
       const progressPercent = Math.min(100, (elapsedInBlock / currentBlockDurationSec) * 100);
 
       fillEl.style.width = `${Math.min(Math.max(progressPercent, 0), 100)}%`;
