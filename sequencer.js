@@ -5,6 +5,7 @@ import midiData from './hyrule_field_midi.json' with { type: 'json' };
 const PPQ = midiData.header.ppq || 960;
 const BARS_PER_BLOCK = 8;
 const TICKS_PER_BLOCK = PPQ * 4 * BARS_PER_BLOCK; // 30,720 ticks per 8-bar block
+const CROSSFADE_TIME = 0.8; // Duration in seconds for smooth crossfade transition
 
 let currentPlaybackState = 'EXPLORATION'; 
 let nextPlaybackState = 'EXPLORATION';
@@ -13,15 +14,11 @@ let currentExplorationBlockIndex = null;
 let currentBattleBlockIndex = 1; // Start battle sequence at index 1 (Battle Block 2) on immediate override
 let introHasPlayed = false;
 
-// Track active block info for progress bar calculations
+// Track active block info for progress bar calculations (in Transport seconds)
 export let currentBlockDurationSec = 13.333;
-export let currentBlockStartTimeSec = 0;
+export let currentBlockStartTransportSec = 0;
 
 // 2. Block Roadmap Definitions (in measure units and tick ranges)
-// Block 0: Intro (Bars 0–7, ticks 0..30720)
-// Blocks 1–7: Exploration / Normal Pool (Bars 8–63)
-// Blocks 8–13: Battle Pool (Bars 64–111)
-// Blocks 18–21: Quiet / Night Pool (Bars 144–175)
 const INTRO_BLOCK = { id: 0, startBar: 0, endBar: 8, startTicks: 0, endTicks: 30720, startTimeSec: 1.200, nextTimeSec: 15.067, durationSec: 13.867 };
 
 const EXPLORATION_BLOCKS = [
@@ -43,7 +40,6 @@ const BATTLE_BLOCKS = [
   { id: 13, startBar: 104, endBar: 112, startTicks: 399360, endTicks: 430080, startTimeSec: 170.067, nextTimeSec: 182.867, durationSec: 12.800 }
 ];
 
-// Truncated Block 22 (Bars 176–183) removed
 const QUIET_BLOCKS = [
   { id: 18, startBar: 144, endBar: 152, startTicks: 552960, endTicks: 583680, startTimeSec: 234.867, nextTimeSec: 249.026, durationSec: 14.159 },
   { id: 19, startBar: 152, endBar: 160, startTicks: 583680, endTicks: 614400, startTimeSec: 249.026, nextTimeSec: 262.804, durationSec: 13.778 },
@@ -51,82 +47,109 @@ const QUIET_BLOCKS = [
   { id: 21, startBar: 168, endBar: 176, startTicks: 645120, endTicks: 675840, startTimeSec: 276.518, nextTimeSec: 289.432, durationSec: 12.914 }
 ];
 
-// 3. Audio Pipeline & N64 Multi-Instrument Synthesizers
+// 3. Master Audio Output Pipeline
 const masterLimiter = new Tone.Limiter(-1).toDestination();
 const masterReverb = new Tone.Reverb({ decay: 2.2, wet: 0.2 }).connect(masterLimiter);
 
-// Brass (Trombone, Trumpet, Brass Section)
-const brassSynth = new Tone.PolySynth(Tone.Synth, {
-  oscillator: { type: 'sawtooth' },
-  envelope: { attack: 0.05, decay: 0.2, sustain: 0.7, release: 0.3 }
-}).connect(masterReverb);
-brassSynth.volume.value = -8;
+// Function to construct an independent synth rack with its own Master Volume channel node for smooth crossfading
+function createSynthRack() {
+  const volumeNode = new Tone.Volume(0).connect(masterReverb);
 
-// Strings (String Ensembles, Cello, Violin)
-const stringSynth = new Tone.PolySynth(Tone.AMSynth, {
-  harmonicity: 1.5,
-  oscillator: { type: 'sawtooth' },
-  envelope: { attack: 0.1, decay: 0.3, sustain: 0.8, release: 0.4 }
-}).connect(masterReverb);
-stringSynth.volume.value = -10;
+  const brassSynth = new Tone.PolySynth(Tone.Synth, {
+    oscillator: { type: 'sawtooth' },
+    envelope: { attack: 0.05, decay: 0.2, sustain: 0.7, release: 0.3 }
+  }).connect(volumeNode);
+  brassSynth.volume.value = -8;
 
-// Woodwinds (Flute, Ocarina, Sax)
-const windSynth = new Tone.PolySynth(Tone.Synth, {
-  oscillator: { type: 'sine' },
-  envelope: { attack: 0.05, decay: 0.1, sustain: 0.85, release: 0.3 }
-}).connect(masterReverb);
-windSynth.volume.value = -6;
+  const stringSynth = new Tone.PolySynth(Tone.AMSynth, {
+    harmonicity: 1.5,
+    oscillator: { type: 'sawtooth' },
+    envelope: { attack: 0.1, decay: 0.3, sustain: 0.8, release: 0.4 }
+  }).connect(volumeNode);
+  stringSynth.volume.value = -10;
 
-// Plucked & Keyboard (Harp, Vibraphone, Marimba, Organ)
-const harpSynth = new Tone.PolySynth(Tone.Synth, {
-  oscillator: { type: 'triangle' },
-  envelope: { attack: 0.01, decay: 0.4, sustain: 0.2, release: 0.3 }
-}).connect(masterReverb);
-harpSynth.volume.value = -8;
+  const windSynth = new Tone.PolySynth(Tone.Synth, {
+    oscillator: { type: 'sine' },
+    envelope: { attack: 0.05, decay: 0.1, sustain: 0.85, release: 0.3 }
+  }).connect(volumeNode);
+  windSynth.volume.value = -6;
 
-// Bass (Electric Bass, Contrabass)
-const bassSynth = new Tone.PolySynth(Tone.Synth, {
-  oscillator: { type: 'triangle' },
-  envelope: { attack: 0.02, decay: 0.2, sustain: 0.8, release: 0.2 }
-}).connect(masterReverb);
-bassSynth.volume.value = -6;
+  const harpSynth = new Tone.PolySynth(Tone.Synth, {
+    oscillator: { type: 'triangle' },
+    envelope: { attack: 0.01, decay: 0.4, sustain: 0.2, release: 0.3 }
+  }).connect(volumeNode);
+  harpSynth.volume.value = -8;
 
-// Percussion Synths (Drums, Timpani, Snare, Cymbals)
-const kickSynth = new Tone.MembraneSynth({
-  pitchDecay: 0.05,
-  octaves: 4,
-  oscillator: { type: 'sine' },
-  envelope: { attack: 0.001, decay: 0.2, sustain: 0, release: 0.1 }
-}).connect(masterLimiter);
-kickSynth.volume.value = -6;
+  const bassSynth = new Tone.PolySynth(Tone.Synth, {
+    oscillator: { type: 'triangle' },
+    envelope: { attack: 0.02, decay: 0.2, sustain: 0.8, release: 0.2 }
+  }).connect(volumeNode);
+  bassSynth.volume.value = -6;
 
-const snareSynth = new Tone.NoiseSynth({
-  noise: { type: 'white' },
-  envelope: { attack: 0.001, decay: 0.15, sustain: 0 }
-}).connect(masterLimiter);
-snareSynth.volume.value = -14;
+  const kickSynth = new Tone.MembraneSynth({
+    pitchDecay: 0.05,
+    octaves: 4,
+    oscillator: { type: 'sine' },
+    envelope: { attack: 0.001, decay: 0.2, sustain: 0, release: 0.1 }
+  }).connect(masterLimiter);
+  kickSynth.volume.value = -6;
 
-const hihatSynth = new Tone.MetalSynth({
-  frequency: 200,
-  envelope: { attack: 0.001, decay: 0.05, release: 0.05 },
-  harmonicity: 5.1,
-  modulationIndex: 32,
-  resonance: 4000,
-  octaves: 1.5
-}).connect(masterLimiter);
-hihatSynth.volume.value = -22;
+  const snareSynth = new Tone.NoiseSynth({
+    noise: { type: 'white' },
+    envelope: { attack: 0.001, decay: 0.15, sustain: 0 }
+  }).connect(masterLimiter);
+  snareSynth.volume.value = -14;
 
-const timpaniSynth = new Tone.MembraneSynth({
-  pitchDecay: 0.08,
-  octaves: 2,
-  oscillator: { type: 'sine' },
-  envelope: { attack: 0.01, decay: 0.4, sustain: 0.1, release: 0.2 }
-}).connect(masterReverb);
-timpaniSynth.volume.value = -8;
+  const hihatSynth = new Tone.MetalSynth({
+    frequency: 200,
+    envelope: { attack: 0.001, decay: 0.05, release: 0.05 },
+    harmonicity: 5.1,
+    modulationIndex: 32,
+    resonance: 4000,
+    octaves: 1.5
+  }).connect(masterLimiter);
+  hihatSynth.volume.value = -22;
 
-function getSynthForTrack(trackIndex) {
+  const timpaniSynth = new Tone.MembraneSynth({
+    pitchDecay: 0.08,
+    octaves: 2,
+    oscillator: { type: 'sine' },
+    envelope: { attack: 0.01, decay: 0.4, sustain: 0.1, release: 0.2 }
+  }).connect(volumeNode);
+  timpaniSynth.volume.value = -8;
+
+  function releaseAll() {
+    [brassSynth, stringSynth, windSynth, harpSynth, bassSynth].forEach(s => {
+      if (typeof s.releaseAll === 'function') s.releaseAll();
+    });
+  }
+
+  return {
+    volumeNode,
+    brassSynth,
+    stringSynth,
+    windSynth,
+    harpSynth,
+    bassSynth,
+    kickSynth,
+    snareSynth,
+    hihatSynth,
+    timpaniSynth,
+    releaseAll
+  };
+}
+
+// Instantiate dual racks for seamless crossfading
+const rackA = createSynthRack();
+const rackB = createSynthRack();
+rackB.volumeNode.volume.value = -Infinity; // rackB muted initially
+
+let activeRack = rackA;
+let inactiveRack = rackB;
+
+function getSynthForTrack(rack, trackIndex) {
   const tr = midiData.tracks[trackIndex];
-  if (!tr) return brassSynth;
+  if (!tr) return rack.brassSynth;
 
   const instName = (tr.instrument ? tr.instrument.name : '').toLowerCase();
   const channel = tr.channel;
@@ -136,29 +159,75 @@ function getSynthForTrack(trackIndex) {
   }
 
   if (instName.includes('trombone') || instName.includes('trumpet') || instName.includes('brass')) {
-    return brassSynth;
+    return rack.brassSynth;
   }
   if (instName.includes('string') || instName.includes('contrabass')) {
-    return stringSynth;
+    return rack.stringSynth;
   }
   if (instName.includes('flute') || instName.includes('ocarina') || instName.includes('sax')) {
-    return windSynth;
+    return rack.windSynth;
   }
   if (instName.includes('harp') || instName.includes('vibraphone') || instName.includes('marimba') || instName.includes('organ') || instName.includes('piano')) {
-    return harpSynth;
+    return rack.harpSynth;
   }
   if (instName.includes('bass')) {
-    return bassSynth;
+    return rack.bassSynth;
   }
   if (instName.includes('timpani')) {
-    return timpaniSynth;
+    return rack.timpaniSynth;
   }
 
-  return brassSynth;
+  return rack.brassSynth;
+}
+
+// Helper to trigger monophonic or polyphonic synths without schedule time collisions
+function triggerSafeNote(rack, synth, note, durationSec, time) {
+  const now = Tone.now();
+  // Ensure scheduled time is never in the past relative to AudioContext current time
+  let safeTime = Math.max(time, now);
+
+  if (synth === 'percussion') {
+    const midiPitch = note.midi;
+    let targetSynth = rack.snareSynth;
+    let pitchParam = undefined;
+    let velMult = 0.5;
+
+    if (midiPitch === 35 || midiPitch === 36) {
+      targetSynth = rack.kickSynth;
+      pitchParam = 'C1';
+      velMult = 1.0;
+    } else if (midiPitch === 38 || midiPitch === 40) {
+      targetSynth = rack.snareSynth;
+      velMult = 1.0;
+    } else if (midiPitch === 42 || midiPitch === 44) {
+      targetSynth = rack.hihatSynth;
+      velMult = 0.7;
+    } else if (midiPitch === 47 || midiPitch === 48) {
+      targetSynth = rack.timpaniSynth;
+      pitchParam = 'G1';
+      velMult = 1.0;
+    }
+
+    const lastTime = targetSynth._lastTriggerTime || 0;
+    safeTime = Math.max(safeTime, lastTime + 0.002);
+    targetSynth._lastTriggerTime = safeTime;
+
+    if (pitchParam !== undefined) {
+      targetSynth.triggerAttackRelease(pitchParam, durationSec, safeTime, note.velocity * velMult);
+    } else {
+      targetSynth.triggerAttackRelease(durationSec, safeTime, note.velocity * velMult);
+    }
+  } else if (synth instanceof Tone.MembraneSynth) {
+    const lastTime = synth._lastTriggerTime || 0;
+    safeTime = Math.max(safeTime, lastTime + 0.002);
+    synth._lastTriggerTime = safeTime;
+    synth.triggerAttackRelease(note.name, durationSec, safeTime, note.velocity);
+  } else {
+    synth.triggerAttackRelease(note.name, durationSec, safeTime, note.velocity);
+  }
 }
 
 // 4. Scheduling & Dynamic Conductor Engine
-let nextScheduledBlockTimeSec = 0;
 let conductorScheduleId = null;
 
 function selectNextBlock(state) {
@@ -185,66 +254,46 @@ function selectNextBlock(state) {
   return INTRO_BLOCK;
 }
 
-function scheduleBlockChain(startTimeSec) {
+function scheduleBlockChain(startTransportSec) {
   const transport = Tone.getTransport();
 
   // Resolve next state for this phrase
   currentPlaybackState = nextPlaybackState;
   const chosenBlock = selectNextBlock(currentPlaybackState);
 
-  currentBlockStartTimeSec = startTimeSec;
+  currentBlockStartTransportSec = startTransportSec;
   currentBlockDurationSec = chosenBlock.durationSec;
+
+  const currentRack = activeRack;
 
   // Queue notes using JSON exact relative note times for natural tempo variations
   midiData.tracks.forEach((track, trIdx) => {
-    const synth = getSynthForTrack(trIdx);
+    const synth = getSynthForTrack(currentRack, trIdx);
 
     const notesInBlock = track.notes.filter(n =>
       n.ticks >= chosenBlock.startTicks && n.ticks < chosenBlock.endTicks
     );
 
     notesInBlock.forEach((note) => {
-      // Calculate relative time from block start using JSON time
       const relativeNoteTimeSec = note.time - chosenBlock.startTimeSec;
-      const exactTimeSec = startTimeSec + relativeNoteTimeSec;
+      const noteTransportSec = startTransportSec + relativeNoteTimeSec;
       const exactDurationSec = note.duration;
 
       const eventId = transport.schedule((scheduledTime) => {
-        triggerNote(synth, note, exactDurationSec, scheduledTime);
-      }, exactTimeSec);
+        triggerSafeNote(currentRack, synth, note, exactDurationSec, scheduledTime);
+      }, noteTransportSec);
 
       activeScheduledEvents.push(eventId);
     });
   });
 
-  // Calculate the start time of the next block
-  nextScheduledBlockTimeSec = startTimeSec + chosenBlock.durationSec;
+  // Calculate the Transport start time of the next block
+  const nextScheduledBlockTransportSec = startTransportSec + chosenBlock.durationSec;
 
-  // Recursively schedule the subsequent block trigger at nextScheduledBlockTimeSec
+  // Recursively schedule the subsequent block trigger at nextScheduledBlockTransportSec
   conductorScheduleId = transport.schedule((scheduledTime) => {
-    scheduleBlockChain(scheduledTime);
-  }, nextScheduledBlockTimeSec);
-}
-
-function triggerNote(synth, note, durationSec, time) {
-  if (synth === 'percussion') {
-    const midiPitch = note.midi;
-    if (midiPitch === 35 || midiPitch === 36) {
-      kickSynth.triggerAttackRelease('C1', durationSec, time, note.velocity);
-    } else if (midiPitch === 38 || midiPitch === 40) {
-      snareSynth.triggerAttackRelease(durationSec, time, note.velocity);
-    } else if (midiPitch === 42 || midiPitch === 44) {
-      hihatSynth.triggerAttackRelease(durationSec, time, note.velocity * 0.7);
-    } else if (midiPitch === 47 || midiPitch === 48) {
-      timpaniSynth.triggerAttackRelease('G1', durationSec, time, note.velocity);
-    } else {
-      snareSynth.triggerAttackRelease(durationSec, time, note.velocity * 0.5);
-    }
-  } else if (synth instanceof Tone.MembraneSynth) {
-    synth.triggerAttackRelease(note.name, durationSec, time, note.velocity);
-  } else {
-    synth.triggerAttackRelease(note.name, durationSec, time, note.velocity);
-  }
+    scheduleBlockChain(nextScheduledBlockTransportSec);
+  }, nextScheduledBlockTransportSec);
 }
 
 // 5. UI Trigger Functions
@@ -262,7 +311,7 @@ export async function changeGameMode(newMode) {
     currentPlaybackState = newMode;
     nextPlaybackState = newMode;
 
-    // Start chain from time 0
+    // Start chain from Transport time 0
     scheduleBlockChain(0);
     transport.start();
     return;
@@ -280,29 +329,52 @@ export async function changeGameMode(newMode) {
 function triggerImmediateBattleOverride() {
   const transport = Tone.getTransport();
 
-  // Clear upcoming note triggers and conductor schedule
+  // Clear upcoming note triggers and conductor schedule from Transport
   activeScheduledEvents.forEach(eventId => transport.clear(eventId));
   activeScheduledEvents = [];
 
   if (conductorScheduleId !== null) {
     transport.clear(conductorScheduleId);
+    conductorScheduleId = null;
   }
 
   currentPlaybackState = 'BATTLE';
   nextPlaybackState = 'BATTLE';
 
-  // Align battle cue (Battle Block 2) smoothly to current playback offset
-  const transportSeconds = transport.seconds;
-  const currentOffsetInBlock = transportSeconds - currentBlockStartTimeSec;
+  // Perform smooth crossfade between synth racks
+  const outgoingRack = activeRack;
+  const incomingRack = inactiveRack;
 
-  currentBattleBlockIndex = 1; // Index 1 is Battle Block 2 (Bars 72..80)
+  // Swap racks
+  activeRack = incomingRack;
+  inactiveRack = outgoingRack;
+
+  // Ramp outgoing volume down and incoming volume up
+  outgoingRack.volumeNode.volume.cancelScheduledValues(Tone.now());
+  outgoingRack.volumeNode.volume.rampTo(-60, CROSSFADE_TIME);
+
+  incomingRack.volumeNode.volume.cancelScheduledValues(Tone.now());
+  incomingRack.volumeNode.volume.setValueAtTime(-60, Tone.now());
+  incomingRack.volumeNode.volume.rampTo(0, CROSSFADE_TIME);
+
+  // Release lingering notes on outgoing rack after crossfade completes
+  setTimeout(() => {
+    outgoingRack.releaseAll();
+  }, CROSSFADE_TIME * 1000);
+
+  // Calculate position within current 8-bar block to maintain timing
+  const transportSeconds = transport.seconds;
+  const elapsedInBlock = Math.max(0, transportSeconds - currentBlockStartTransportSec);
+  const currentOffsetInBlock = elapsedInBlock % currentBlockDurationSec;
+
+  currentBattleBlockIndex = 1; // Battle Block 2 (Bars 72..80)
   const battleBlock = BATTLE_BLOCKS[1];
 
-  currentBlockStartTimeSec = transportSeconds - currentOffsetInBlock;
+  currentBlockStartTransportSec = transportSeconds - currentOffsetInBlock;
   currentBlockDurationSec = battleBlock.durationSec;
 
   midiData.tracks.forEach((track, trIdx) => {
-    const synth = getSynthForTrack(trIdx);
+    const synth = getSynthForTrack(incomingRack, trIdx);
 
     const notesInBlock = track.notes.filter(n =>
       n.ticks >= battleBlock.startTicks && n.ticks < battleBlock.endTicks
@@ -311,21 +383,21 @@ function triggerImmediateBattleOverride() {
     notesInBlock.forEach((note) => {
       const relativeNoteTimeSec = note.time - battleBlock.startTimeSec;
       if (relativeNoteTimeSec >= currentOffsetInBlock) {
-        const exactTimeSec = transportSeconds + (relativeNoteTimeSec - currentOffsetInBlock);
+        const noteTransportSec = currentBlockStartTransportSec + relativeNoteTimeSec;
         const exactDurationSec = note.duration;
 
         const eventId = transport.schedule((scheduledTime) => {
-          triggerNote(synth, note, exactDurationSec, scheduledTime);
-        }, exactTimeSec);
+          triggerSafeNote(incomingRack, synth, note, exactDurationSec, scheduledTime);
+        }, noteTransportSec);
 
         activeScheduledEvents.push(eventId);
       }
     });
   });
 
-  // Next block start time
-  nextScheduledBlockTimeSec = currentBlockStartTimeSec + battleBlock.durationSec;
+  // Next block start transport time
+  const nextScheduledBlockTransportSec = currentBlockStartTransportSec + battleBlock.durationSec;
   conductorScheduleId = transport.schedule((scheduledTime) => {
-    scheduleBlockChain(scheduledTime);
-  }, nextScheduledBlockTimeSec);
+    scheduleBlockChain(nextScheduledBlockTransportSec);
+  }, nextScheduledBlockTransportSec);
 }
