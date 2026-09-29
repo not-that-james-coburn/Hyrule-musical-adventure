@@ -1,0 +1,452 @@
+{
+  "Grand Piano-C3": {
+    "file": "soundfont/00_Grand_Piano-C3.ogg",
+    "pitch": 48,
+    "sampleRate": 31000
+  },
+  "Grand Piano-F3": {
+    "file": "soundfont/46_Grand_Piano-F3.ogg",
+    "pitch": 53,
+    "sampleRate": 31000
+  },
+  "Grand Piano-A#3": {
+    "file": "soundfont/92_Grand_Piano-As3.ogg",
+    "pitch": 58,
+    "sampleRate": 30930
+  },
+  "Grand Piano-C4": {
+    "file": "soundfont/138_Grand_Piano-C4.ogg",
+    "pitch": 60,
+    "sampleRate": 31000
+  },
+  "Grand Piano-D#3": {
+    "file": "soundfont/184_Grand_Piano-Ds3.ogg",
+    "pitch": 63,
+    "sampleRate": 44100
+  },
+  "Grand Piano-F#4": {
+    "file": "soundfont/230_Grand_Piano-Fs4.ogg",
+    "pitch": 67,
+    "sampleRate": 32014
+  },
+  "Grand Piano-C5": {
+    "file": "soundfont/276_Grand_Piano-C5.ogg",
+    "pitch": 72,
+    "sampleRate": 30982
+  },
+  "Grand Piano-D#5": {
+    "file": "soundfont/322_Grand_Piano-Ds5.ogg",
+    "pitch": 75,
+    "sampleRate": 31113
+  },
+  "Grand Piano-A5": {
+    "file": "soundfont/368_Grand_Piano-A5.ogg",
+    "pitch": 81,
+    "sampleRate": 30536
+  },
+  "Grand Piano-D6": {
+    "file": "soundfont/414_Grand_Piano-D6.ogg",
+    "pitch": 86,
+    "sampleRate": 31128
+  },
+  "StrLoop - C1": {
+    "file": "soundfont/460_StrLoop_-_C1.ogg",
+    "pitch": 36,
+    "sampleRate": 32000
+  },
+  "StrLoop - D#1": {
+    "file": "soundfont/506_StrLoop_-_Ds1.ogg",
+    "pitch": 39,
+    "sampleRate": 32000
+  },
+  "StrLoop - F#1": {
+    "file": "soundfont/552_StrLoop_-_Fs1.ogg",
+    "pitch": 42,
+    "sampleRate": 32000
+  },
+  "StrLoop - A1": {
+    "file": "soundfont/598_StrLoop_-_A1.ogg",
+    "pitch": 45,
+    "sampleRate": 32000
+  },
+  "StrLoop - C2": {
+    "file": "soundfont/644_StrLoop_-_C2.ogg",
+    "pitch": 48,
+    "sampleRate": 32000
+  },
+  "StrLoop - D#2": {
+    "file": "soundfont/690_StrLoop_-_Ds2.ogg",
+    "pitch": 51,
+    "sampleRate": 32000
+  },
+  "StrLoop - F#2": {
+    "file": "soundfont/736_StrLoop_-_Fs2.ogg",
+    "pitch": 54,
+    "sampleRate": 32000
+  },
+  "StrLoop - A2": {
+    "file": "soundfont/782_StrLoop_-_A2.ogg",
+    "pitch": 57,
+    "sampleRate": 32000
+  },
+  "StrLoop - C3": {
+    "file": "soundfont/828_StrLoop_-_C3.ogg",
+    "pitch": 60,
+    "sampleRate": 32000
+  },
+  "StrLoop - D#3": {
+    "file": "soundfont/874_StrLoop_-_Ds3.ogg",
+    "pitch": 63,
+    "sampleRate": 32000
+  },
+  "StrLoop - F#3": {
+    "file": "soundfont/920_StrLoop_-_Fs3.ogg",
+    "pitch": 66,
+    "sampleRate": 32000
+  },
+  "StrLoop - A3": {
+    "file": "soundfont/966_StrLoop_-_A3.ogg",
+    "pitch": 69,
+    "sampleRate": 32000
+  },
+  "StrLoop - C4": {
+    "file": "soundfont/1012_StrLoop_-_C4.ogg",
+    "pitch": 72,
+    "sampleRate": 32000
+  },
+  "StrLoop - D#4": {
+    "file": "soundfont/1058_StrLoop_-_Ds4.ogg",
+    "pitch": 75,
+    "sampleRate": 32000
+  },
+  "StrLoop - F#4": {
+    "file": "soundfont/1104_StrLoop_-_Fs4.ogg",
+    "pitch": 78,
+    "sampleRate": 32000
+  },
+  "StrLoop - A4": {
+    "file": "soundfont/1150_StrLoop_-_A4.ogg",
+    "pitch": 81,
+    "sampleRate": 32000
+  },
+  "StrLoop - C5": {
+    "file": "soundfont/1196_StrLoop_-_C5.ogg",
+    "pitch": 84,
+    "sampleRate": 32000
+  },
+  "Standard Snare 3": {
+    "file": "soundfont/1242_Standard_Snare_3.ogg",
+    "pitch": 47,
+    "sampleRate": 29762
+  },
+  "Jazz Snare Soft 1": {
+    "file": "soundfont/1288_Jazz_Snare_Soft_1.ogg",
+    "pitch": 60,
+    "sampleRate": 22050
+  },
+  "Jazz Snare Hard": {
+    "file": "soundfont/1334_Jazz_Snare_Hard.ogg",
+    "pitch": 60,
+    "sampleRate": 44100
+  },
+  "Standard Tom 5": {
+    "file": "soundfont/1380_Standard_Tom_5.ogg",
+    "pitch": 60,
+    "sampleRate": 32000
+  },
+  "Vibraphone-C6": {
+    "file": "soundfont/1426_Vibraphone-C6.ogg",
+    "pitch": 84,
+    "sampleRate": 30000
+  },
+  "Vibraphone-B6": {
+    "file": "soundfont/1472_Vibraphone-B6.ogg",
+    "pitch": 83,
+    "sampleRate": 30000
+  },
+  "Sine-187.5Hz": {
+    "file": "soundfont/1518_Sine-187.5Hz.ogg",
+    "pitch": 54,
+    "sampleRate": 48000
+  },
+  "Sine-375Hz": {
+    "file": "soundfont/1564_Sine-375Hz.ogg",
+    "pitch": 66,
+    "sampleRate": 48000
+  },
+  "Sine-750Hz": {
+    "file": "soundfont/1610_Sine-750Hz.ogg",
+    "pitch": 78,
+    "sampleRate": 48000
+  },
+  "Marimba-C4": {
+    "file": "soundfont/1656_Marimba-C4.ogg",
+    "pitch": 60,
+    "sampleRate": 22050
+  },
+  "Accordion-F#2": {
+    "file": "soundfont/1702_Accordion-Fs2.ogg",
+    "pitch": 58,
+    "sampleRate": 44100
+  },
+  "Accordion-A#2": {
+    "file": "soundfont/1748_Accordion-As2.ogg",
+    "pitch": 62,
+    "sampleRate": 44100
+  },
+  "Accordion-D2": {
+    "file": "soundfont/1794_Accordion-D2.ogg",
+    "pitch": 54,
+    "sampleRate": 44100
+  },
+  "Pick Bass-A0": {
+    "file": "soundfont/1840_Pick_Bass-A0.ogg",
+    "pitch": 48,
+    "sampleRate": 44100
+  },
+  "Pick Bass-D1": {
+    "file": "soundfont/1886_Pick_Bass-D1.ogg",
+    "pitch": 52,
+    "sampleRate": 44100
+  },
+  "Pick Bass-G1": {
+    "file": "soundfont/1932_Pick_Bass-G1.ogg",
+    "pitch": 57,
+    "sampleRate": 44100
+  },
+  "Cello-F#2": {
+    "file": "soundfont/1978_Cello-Fs2.ogg",
+    "pitch": 54,
+    "sampleRate": 30000
+  },
+  "Double Bass-A#1": {
+    "file": "soundfont/2024_Double_Bass-As1.ogg",
+    "pitch": 34,
+    "sampleRate": 33000
+  },
+  "Double Bass-D#2": {
+    "file": "soundfont/2070_Double_Bass-Ds2.ogg",
+    "pitch": 39,
+    "sampleRate": 33000
+  },
+  "Double Bass-F#2": {
+    "file": "soundfont/2116_Double_Bass-Fs2.ogg",
+    "pitch": 42,
+    "sampleRate": 33000
+  },
+  "Double Bass-C3": {
+    "file": "soundfont/2162_Double_Bass-C3.ogg",
+    "pitch": 48,
+    "sampleRate": 33000
+  },
+  "Double Bass-D3": {
+    "file": "soundfont/2208_Double_Bass-D3.ogg",
+    "pitch": 50,
+    "sampleRate": 33000
+  },
+  "Double Bass-G3": {
+    "file": "soundfont/2254_Double_Bass-G3.ogg",
+    "pitch": 55,
+    "sampleRate": 33000
+  },
+  "Orchestral Harp-E3": {
+    "file": "soundfont/2300_Orchestral_Harp-E3.ogg",
+    "pitch": 52,
+    "sampleRate": 21605
+  },
+  "Orchestral Harp-C4": {
+    "file": "soundfont/2346_Orchestral_Harp-C4.ogg",
+    "pitch": 60,
+    "sampleRate": 21604
+  },
+  "Orchestral Harp-C#4": {
+    "file": "soundfont/2392_Orchestral_Harp-Cs4.ogg",
+    "pitch": 61,
+    "sampleRate": 44101
+  },
+  "Orchestral Harp-F#5": {
+    "file": "soundfont/2438_Orchestral_Harp-Fs5.ogg",
+    "pitch": 78,
+    "sampleRate": 44101
+  },
+  "Orchestral Harp-A6": {
+    "file": "soundfont/2484_Orchestral_Harp-A6.ogg",
+    "pitch": 93,
+    "sampleRate": 44101
+  },
+  "Timpani Soft": {
+    "file": "soundfont/2530_Timpani_Soft.ogg",
+    "pitch": 50,
+    "sampleRate": 11025
+  },
+  "Timpani Hard": {
+    "file": "soundfont/2576_Timpani_Hard.ogg",
+    "pitch": 58,
+    "sampleRate": 44100
+  },
+  "Brass Section-C4": {
+    "file": "soundfont/2622_Brass_Section-C4.ogg",
+    "pitch": 60,
+    "sampleRate": 44100
+  },
+  "Brass Section-G4": {
+    "file": "soundfont/2668_Brass_Section-G4.ogg",
+    "pitch": 67,
+    "sampleRate": 44100
+  },
+  "Brass Section-C5": {
+    "file": "soundfont/2714_Brass_Section-C5.ogg",
+    "pitch": 72,
+    "sampleRate": 44100
+  },
+  "Brass Section-E5": {
+    "file": "soundfont/2760_Brass_Section-E5.ogg",
+    "pitch": 76,
+    "sampleRate": 44100
+  },
+  "Brass Section-G5": {
+    "file": "soundfont/2806_Brass_Section-G5.ogg",
+    "pitch": 79,
+    "sampleRate": 44100
+  },
+  "Trombone-B1": {
+    "file": "soundfont/2852_Trombone-B1.ogg",
+    "pitch": 47,
+    "sampleRate": 44100
+  },
+  "Trombone-E2": {
+    "file": "soundfont/2898_Trombone-E2.ogg",
+    "pitch": 52,
+    "sampleRate": 44100
+  },
+  "Trombone-A2": {
+    "file": "soundfont/2944_Trombone-A2.ogg",
+    "pitch": 57,
+    "sampleRate": 44100
+  },
+  "Trombone-D3": {
+    "file": "soundfont/2990_Trombone-D3.ogg",
+    "pitch": 62,
+    "sampleRate": 44100
+  },
+  "Trombone-G3": {
+    "file": "soundfont/3036_Trombone-G3.ogg",
+    "pitch": 67,
+    "sampleRate": 44100
+  },
+  "Trombone-C4": {
+    "file": "soundfont/3082_Trombone-C4.ogg",
+    "pitch": 72,
+    "sampleRate": 44100
+  },
+  "Flute-C#4": {
+    "file": "soundfont/3128_Flute-Cs4.ogg",
+    "pitch": 61,
+    "sampleRate": 32000
+  },
+  "Flute-D#4": {
+    "file": "soundfont/3174_Flute-Ds4.ogg",
+    "pitch": 63,
+    "sampleRate": 32000
+  },
+  "Flute-G4": {
+    "file": "soundfont/3220_Flute-G4.ogg",
+    "pitch": 67,
+    "sampleRate": 32000
+  },
+  "Flute-A#4": {
+    "file": "soundfont/3266_Flute-As4.ogg",
+    "pitch": 70,
+    "sampleRate": 32000
+  },
+  "Flute-C#5": {
+    "file": "soundfont/3312_Flute-Cs5.ogg",
+    "pitch": 73,
+    "sampleRate": 32000
+  },
+  "Flute-E5": {
+    "file": "soundfont/3358_Flute-E5.ogg",
+    "pitch": 76,
+    "sampleRate": 32000
+  },
+  "Flute-G5": {
+    "file": "soundfont/3404_Flute-G5.ogg",
+    "pitch": 79,
+    "sampleRate": 32000
+  },
+  "Flute-A#5": {
+    "file": "soundfont/3450_Flute-As5.ogg",
+    "pitch": 82,
+    "sampleRate": 32000
+  },
+  "Flute-C#6": {
+    "file": "soundfont/3496_Flute-Cs6.ogg",
+    "pitch": 85,
+    "sampleRate": 32000
+  },
+  "Flute-E6": {
+    "file": "soundfont/3542_Flute-E6.ogg",
+    "pitch": 88,
+    "sampleRate": 32000
+  },
+  "Flute-G6": {
+    "file": "soundfont/3588_Flute-G6.ogg",
+    "pitch": 91,
+    "sampleRate": 32000
+  },
+  "Trumpet-A#3": {
+    "file": "soundfont/3634_Trumpet-As3.ogg",
+    "pitch": 58,
+    "sampleRate": 31245
+  },
+  "Trumpet-E4": {
+    "file": "soundfont/3680_Trumpet-E4.ogg",
+    "pitch": 64,
+    "sampleRate": 31245
+  },
+  "Trumpet-A4": {
+    "file": "soundfont/3726_Trumpet-A4.ogg",
+    "pitch": 69,
+    "sampleRate": 31137
+  },
+  "Trumpet-D5": {
+    "file": "soundfont/3772_Trumpet-D5.ogg",
+    "pitch": 74,
+    "sampleRate": 31209
+  },
+  "Trumpet-F#6": {
+    "file": "soundfont/3818_Trumpet-Fs6.ogg",
+    "pitch": 78,
+    "sampleRate": 31137
+  },
+  "Tenor Sax-D3": {
+    "file": "soundfont/3864_Tenor_Sax-D3.ogg",
+    "pitch": 62,
+    "sampleRate": 44100
+  },
+  "Tenor Sax-F3": {
+    "file": "soundfont/3910_Tenor_Sax-F3.ogg",
+    "pitch": 65,
+    "sampleRate": 44100
+  },
+  "Tenor Sax-C4": {
+    "file": "soundfont/3956_Tenor_Sax-C4.ogg",
+    "pitch": 72,
+    "sampleRate": 44100
+  },
+  "Tenor Sax-Eb4": {
+    "file": "soundfont/4002_Tenor_Sax-Eb4.ogg",
+    "pitch": 75,
+    "sampleRate": 44100
+  },
+  "Ocarina-G#5": {
+    "file": "soundfont/4048_Ocarina-Gs5.ogg",
+    "pitch": 80,
+    "sampleRate": 25000
+  },
+  "Ocarina-G#6": {
+    "file": "soundfont/4094_Ocarina-Gs6.ogg",
+    "pitch": 92,
+    "sampleRate": 25000
+  }
+}
