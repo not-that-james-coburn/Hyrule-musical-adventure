@@ -1,5 +1,5 @@
 import * as Tone from 'tone';
-import { changeGameMode, getCurrentPlaybackState, DEFAULT_BPM } from './sequencer.js';
+import { changeGameMode, getCurrentPlaybackState, currentBlockStartTimeSec, currentBlockDurationSec } from './sequencer.js';
 
 // Wire up the HTML buttons into your Tone.js execution environment
 document.addEventListener('DOMContentLoaded', () => {
@@ -26,12 +26,8 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderProgressBar() {
     const transport = Tone.getTransport();
     if (transport && (transport.state === 'started' || transport.state === 'running')) {
-      const bpm = transport.bpm ? transport.bpm.value : DEFAULT_BPM;
-      const secondsPer8Bars = (60 / bpm) * 4 * 8; // Exactly 8 measures of 4/4 at BPM
-
-      // Calculate progress within current 8-bar cycle
-      const currentSecondsInCycle = transport.seconds % secondsPer8Bars;
-      const progressPercent = (currentSecondsInCycle / secondsPer8Bars) * 100;
+      const elapsedInBlock = Math.max(0, transport.seconds - currentBlockStartTimeSec);
+      const progressPercent = Math.min(100, (elapsedInBlock / currentBlockDurationSec) * 100);
 
       fillEl.style.width = `${Math.min(Math.max(progressPercent, 0), 100)}%`;
 

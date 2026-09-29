@@ -2,12 +2,9 @@ import * as Tone from 'tone';
 import midiData from './hyrule_field_midi.json' with { type: 'json' };
 
 // 1. Core State & Timing Configuration
-export const DEFAULT_BPM = 144;
 const PPQ = midiData.header.ppq || 960;
-const TICKS_PER_BEAT = PPQ;
-const TICKS_PER_MEASURE = PPQ * 4; // 3840 ticks per measure in 4/4
 const BARS_PER_BLOCK = 8;
-const TICKS_PER_BLOCK = TICKS_PER_MEASURE * BARS_PER_BLOCK; // 30,720 ticks
+const TICKS_PER_BLOCK = PPQ * 4 * BARS_PER_BLOCK; // 30,720 ticks per 8-bar block
 
 let currentPlaybackState = 'EXPLORATION'; 
 let nextPlaybackState = 'EXPLORATION';
@@ -16,48 +13,52 @@ let currentExplorationBlockIndex = null;
 let currentBattleBlockIndex = 1; // Start battle sequence at index 1 (Battle Block 2) on immediate override
 let introHasPlayed = false;
 
+// Track active block info for progress bar calculations
+export let currentBlockDurationSec = 13.333;
+export let currentBlockStartTimeSec = 0;
+
 // 2. Block Roadmap Definitions (in measure units and tick ranges)
-// Block 0: Intro (Bars 0–7)
+// Block 0: Intro (Bars 0–7, ticks 0..30720)
 // Blocks 1–7: Exploration / Normal Pool (Bars 8–63)
 // Blocks 8–13: Battle Pool (Bars 64–111)
-// Blocks 18–21: Quiet / Night Pool (Bars 144–175) - Block 22 removed as incomplete/loop tail
-const INTRO_BLOCK = { id: 0, startBar: 0, endBar: 8, startTicks: 0, endTicks: 30720 };
+// Blocks 18–21: Quiet / Night Pool (Bars 144–175)
+const INTRO_BLOCK = { id: 0, startBar: 0, endBar: 8, startTicks: 0, endTicks: 30720, startTimeSec: 1.200, nextTimeSec: 15.067, durationSec: 13.867 };
 
 const EXPLORATION_BLOCKS = [
-  { id: 1, startBar: 8, endBar: 16, startTicks: 30720, endTicks: 61440 },
-  { id: 2, startBar: 16, endBar: 24, startTicks: 61440, endTicks: 92160 },
-  { id: 3, startBar: 24, endBar: 32, startTicks: 92160, endTicks: 122880 },
-  { id: 4, startBar: 32, endBar: 40, startTicks: 122880, endTicks: 153600 },
-  { id: 5, startBar: 40, endBar: 48, startTicks: 153600, endTicks: 184320 },
-  { id: 6, startBar: 48, endBar: 56, startTicks: 184320, endTicks: 215040 },
-  { id: 7, startBar: 56, endBar: 64, startTicks: 215040, endTicks: 245760 }
+  { id: 1, startBar: 8, endBar: 16, startTicks: 30720, endTicks: 61440, startTimeSec: 15.067, nextTimeSec: 29.267, durationSec: 14.200 },
+  { id: 2, startBar: 16, endBar: 24, startTicks: 61440, endTicks: 92160, startTimeSec: 29.267, nextTimeSec: 42.067, durationSec: 12.800 },
+  { id: 3, startBar: 24, endBar: 32, startTicks: 92160, endTicks: 122880, startTimeSec: 42.067, nextTimeSec: 54.867, durationSec: 12.800 },
+  { id: 4, startBar: 32, endBar: 40, startTicks: 122880, endTicks: 153600, startTimeSec: 54.867, nextTimeSec: 67.667, durationSec: 12.800 },
+  { id: 5, startBar: 40, endBar: 48, startTicks: 153600, endTicks: 184320, startTimeSec: 67.667, nextTimeSec: 80.467, durationSec: 12.800 },
+  { id: 6, startBar: 48, endBar: 56, startTicks: 184320, endTicks: 215040, startTimeSec: 80.467, nextTimeSec: 93.267, durationSec: 12.800 },
+  { id: 7, startBar: 56, endBar: 64, startTicks: 215040, endTicks: 245760, startTimeSec: 93.267, nextTimeSec: 106.067, durationSec: 12.800 }
 ];
 
 const BATTLE_BLOCKS = [
-  { id: 8, startBar: 64, endBar: 72, startTicks: 245760, endTicks: 276480 },
-  { id: 9, startBar: 72, endBar: 80, startTicks: 276480, endTicks: 307200 },
-  { id: 10, startBar: 80, endBar: 88, startTicks: 307200, endTicks: 337920 },
-  { id: 11, startBar: 88, endBar: 96, startTicks: 337920, endTicks: 368640 },
-  { id: 12, startBar: 96, endBar: 104, startTicks: 368640, endTicks: 399360 },
-  { id: 13, startBar: 104, endBar: 112, startTicks: 399360, endTicks: 430080 }
+  { id: 8, startBar: 64, endBar: 72, startTicks: 245760, endTicks: 276480, startTimeSec: 106.067, nextTimeSec: 118.867, durationSec: 12.800 },
+  { id: 9, startBar: 72, endBar: 80, startTicks: 276480, endTicks: 307200, startTimeSec: 118.867, nextTimeSec: 131.667, durationSec: 12.800 },
+  { id: 10, startBar: 80, endBar: 88, startTicks: 307200, endTicks: 337920, startTimeSec: 131.667, nextTimeSec: 144.467, durationSec: 12.800 },
+  { id: 11, startBar: 88, endBar: 96, startTicks: 337920, endTicks: 368640, startTimeSec: 144.467, nextTimeSec: 157.267, durationSec: 12.800 },
+  { id: 12, startBar: 96, endBar: 104, startTicks: 368640, endTicks: 399360, startTimeSec: 157.267, nextTimeSec: 170.067, durationSec: 12.800 },
+  { id: 13, startBar: 104, endBar: 112, startTicks: 399360, endTicks: 430080, startTimeSec: 170.067, nextTimeSec: 182.867, durationSec: 12.800 }
 ];
 
-// Removed Block 22 (Bars 176–183) as requested
+// Truncated Block 22 (Bars 176–183) removed
 const QUIET_BLOCKS = [
-  { id: 18, startBar: 144, endBar: 152, startTicks: 552960, endTicks: 583680 },
-  { id: 19, startBar: 152, endBar: 160, startTicks: 583680, endTicks: 614400 },
-  { id: 20, startBar: 160, endBar: 168, startTicks: 614400, endTicks: 645120 },
-  { id: 21, startBar: 168, endBar: 176, startTicks: 645120, endTicks: 675840 }
+  { id: 18, startBar: 144, endBar: 152, startTicks: 552960, endTicks: 583680, startTimeSec: 234.867, nextTimeSec: 249.026, durationSec: 14.159 },
+  { id: 19, startBar: 152, endBar: 160, startTicks: 583680, endTicks: 614400, startTimeSec: 249.026, nextTimeSec: 262.804, durationSec: 13.778 },
+  { id: 20, startBar: 160, endBar: 168, startTicks: 614400, endTicks: 645120, startTimeSec: 262.804, nextTimeSec: 276.518, durationSec: 13.714 },
+  { id: 21, startBar: 168, endBar: 176, startTicks: 645120, endTicks: 675840, startTimeSec: 276.518, nextTimeSec: 289.432, durationSec: 12.914 }
 ];
 
 // 3. Audio Pipeline & N64 Multi-Instrument Synthesizers
 const masterLimiter = new Tone.Limiter(-1).toDestination();
-const masterReverb = new Tone.Reverb({ decay: 1.8, wet: 0.15 }).connect(masterLimiter);
+const masterReverb = new Tone.Reverb({ decay: 2.2, wet: 0.2 }).connect(masterLimiter);
 
 // Brass (Trombone, Trumpet, Brass Section)
 const brassSynth = new Tone.PolySynth(Tone.Synth, {
   oscillator: { type: 'sawtooth' },
-  envelope: { attack: 0.04, decay: 0.2, sustain: 0.7, release: 0.1 }
+  envelope: { attack: 0.05, decay: 0.2, sustain: 0.7, release: 0.3 }
 }).connect(masterReverb);
 brassSynth.volume.value = -8;
 
@@ -65,28 +66,28 @@ brassSynth.volume.value = -8;
 const stringSynth = new Tone.PolySynth(Tone.AMSynth, {
   harmonicity: 1.5,
   oscillator: { type: 'sawtooth' },
-  envelope: { attack: 0.08, decay: 0.25, sustain: 0.75, release: 0.15 }
+  envelope: { attack: 0.1, decay: 0.3, sustain: 0.8, release: 0.4 }
 }).connect(masterReverb);
 stringSynth.volume.value = -10;
 
 // Woodwinds (Flute, Ocarina, Sax)
 const windSynth = new Tone.PolySynth(Tone.Synth, {
   oscillator: { type: 'sine' },
-  envelope: { attack: 0.04, decay: 0.1, sustain: 0.8, release: 0.1 }
+  envelope: { attack: 0.05, decay: 0.1, sustain: 0.85, release: 0.3 }
 }).connect(masterReverb);
 windSynth.volume.value = -6;
 
 // Plucked & Keyboard (Harp, Vibraphone, Marimba, Organ)
 const harpSynth = new Tone.PolySynth(Tone.Synth, {
   oscillator: { type: 'triangle' },
-  envelope: { attack: 0.01, decay: 0.35, sustain: 0.2, release: 0.1 }
+  envelope: { attack: 0.01, decay: 0.4, sustain: 0.2, release: 0.3 }
 }).connect(masterReverb);
 harpSynth.volume.value = -8;
 
 // Bass (Electric Bass, Contrabass)
 const bassSynth = new Tone.PolySynth(Tone.Synth, {
   oscillator: { type: 'triangle' },
-  envelope: { attack: 0.02, decay: 0.2, sustain: 0.8, release: 0.08 }
+  envelope: { attack: 0.02, decay: 0.2, sustain: 0.8, release: 0.2 }
 }).connect(masterReverb);
 bassSynth.volume.value = -6;
 
@@ -95,7 +96,7 @@ const kickSynth = new Tone.MembraneSynth({
   pitchDecay: 0.05,
   octaves: 4,
   oscillator: { type: 'sine' },
-  envelope: { attack: 0.001, decay: 0.2, sustain: 0, release: 0.08 }
+  envelope: { attack: 0.001, decay: 0.2, sustain: 0, release: 0.1 }
 }).connect(masterLimiter);
 kickSynth.volume.value = -6;
 
@@ -119,15 +120,9 @@ const timpaniSynth = new Tone.MembraneSynth({
   pitchDecay: 0.08,
   octaves: 2,
   oscillator: { type: 'sine' },
-  envelope: { attack: 0.01, decay: 0.4, sustain: 0.1, release: 0.15 }
+  envelope: { attack: 0.01, decay: 0.4, sustain: 0.1, release: 0.2 }
 }).connect(masterReverb);
 timpaniSynth.volume.value = -8;
-
-const allPolySynths = [brassSynth, stringSynth, windSynth, harpSynth, bassSynth];
-
-function releaseAllSynths() {
-  allPolySynths.forEach(s => s.releaseAll());
-}
 
 function getSynthForTrack(trackIndex) {
   const tr = midiData.tracks[trackIndex];
@@ -162,29 +157,9 @@ function getSynthForTrack(trackIndex) {
   return brassSynth;
 }
 
-// 4. Scheduling & Block Engine
-let conductorLoopId = null;
-
-function setupConductor() {
-  const transport = Tone.getTransport();
-  transport.bpm.value = DEFAULT_BPM;
-
-  if (conductorLoopId !== null) {
-    transport.clear(conductorLoopId);
-  }
-
-  // Schedule recurring 8-bar block trigger strictly aligned to 8m measures
-  conductorLoopId = transport.scheduleRepeat((time) => {
-    // Resolve next state at 8-bar boundary
-    currentPlaybackState = nextPlaybackState;
-
-    // Release any lingering synth voices at the block boundary
-    releaseAllSynths();
-
-    // Schedule next block
-    scheduleNextBlock(time);
-  }, `${BARS_PER_BLOCK}m`, "0:0:0");
-}
+// 4. Scheduling & Dynamic Conductor Engine
+let nextScheduledBlockTimeSec = 0;
+let conductorScheduleId = null;
 
 function selectNextBlock(state) {
   if (state === 'EXPLORATION') {
@@ -210,39 +185,45 @@ function selectNextBlock(state) {
   return INTRO_BLOCK;
 }
 
-function scheduleNextBlock(startTime, partialBlock = null, startBeatOffsetInBlock = 0) {
+function scheduleBlockChain(startTimeSec) {
   const transport = Tone.getTransport();
-  const chosenBlock = partialBlock || selectNextBlock(currentPlaybackState);
-  const secondsPerBeat = 60 / transport.bpm.value;
 
+  // Resolve next state for this phrase
+  currentPlaybackState = nextPlaybackState;
+  const chosenBlock = selectNextBlock(currentPlaybackState);
+
+  currentBlockStartTimeSec = startTimeSec;
+  currentBlockDurationSec = chosenBlock.durationSec;
+
+  // Queue notes using JSON exact relative note times for natural tempo variations
   midiData.tracks.forEach((track, trIdx) => {
     const synth = getSynthForTrack(trIdx);
 
     const notesInBlock = track.notes.filter(n =>
-      n.ticks >= chosenBlock.startTicks + (startBeatOffsetInBlock * TICKS_PER_BEAT) &&
-      n.ticks < chosenBlock.endTicks
+      n.ticks >= chosenBlock.startTicks && n.ticks < chosenBlock.endTicks
     );
 
     notesInBlock.forEach((note) => {
-      // Calculate beat offset relative to block start or current start point
-      const beatOffsetInBlock = (note.ticks - chosenBlock.startTicks) / TICKS_PER_BEAT;
-      const relativeOffsetFromStart = beatOffsetInBlock - startBeatOffsetInBlock;
-
-      const durationBeats = note.durationTicks / TICKS_PER_BEAT;
-      // Clamp note duration so it does not exceed the block end boundary
-      const beatsRemainingInBlock = (chosenBlock.endTicks - note.ticks) / TICKS_PER_BEAT;
-      const clampedDurationBeats = Math.min(durationBeats, beatsRemainingInBlock);
-
-      const exactTime = startTime + (relativeOffsetFromStart * secondsPerBeat);
-      const exactDuration = Math.max(clampedDurationBeats * secondsPerBeat, 0.05);
+      // Calculate relative time from block start using JSON time
+      const relativeNoteTimeSec = note.time - chosenBlock.startTimeSec;
+      const exactTimeSec = startTimeSec + relativeNoteTimeSec;
+      const exactDurationSec = note.duration;
 
       const eventId = transport.schedule((scheduledTime) => {
-        triggerNote(synth, note, exactDuration, scheduledTime);
-      }, exactTime);
+        triggerNote(synth, note, exactDurationSec, scheduledTime);
+      }, exactTimeSec);
 
       activeScheduledEvents.push(eventId);
     });
   });
+
+  // Calculate the start time of the next block
+  nextScheduledBlockTimeSec = startTimeSec + chosenBlock.durationSec;
+
+  // Recursively schedule the subsequent block trigger at nextScheduledBlockTimeSec
+  conductorScheduleId = transport.schedule((scheduledTime) => {
+    scheduleBlockChain(scheduledTime);
+  }, nextScheduledBlockTimeSec);
 }
 
 function triggerNote(synth, note, durationSec, time) {
@@ -271,12 +252,6 @@ export function getCurrentPlaybackState() {
   return currentPlaybackState;
 }
 
-export function setBpm(newBpm) {
-  if (newBpm >= 60 && newBpm <= 200) {
-    Tone.getTransport().bpm.value = newBpm;
-  }
-}
-
 export async function changeGameMode(newMode) {
   const transport = Tone.getTransport();
 
@@ -287,8 +262,8 @@ export async function changeGameMode(newMode) {
     currentPlaybackState = newMode;
     nextPlaybackState = newMode;
 
-    // Setup 8-bar schedule repeat AND start transport (scheduleRepeat fires at 0:0:0)
-    setupConductor();
+    // Start chain from time 0
+    scheduleBlockChain(0);
     transport.start();
     return;
   }
@@ -304,29 +279,53 @@ export async function changeGameMode(newMode) {
 
 function triggerImmediateBattleOverride() {
   const transport = Tone.getTransport();
-  const currentBpm = transport.bpm.value;
-  const secondsPerBeat = 60 / currentBpm;
-  const secondsPer8Bars = secondsPerBeat * 4 * BARS_PER_BLOCK;
 
-  // Compute exact position within 8-bar grid
-  const transportSeconds = transport.seconds;
-  const currentBlockSeconds = transportSeconds % secondsPer8Bars;
-  const currentBeatInBlock = currentBlockSeconds / secondsPerBeat;
-
-  // Clear all future scheduled events and release playing notes
-  activeScheduledEvents.forEach(eventId => {
-    transport.clear(eventId);
-  });
+  // Clear upcoming note triggers and conductor schedule
+  activeScheduledEvents.forEach(eventId => transport.clear(eventId));
   activeScheduledEvents = [];
-  releaseAllSynths();
+
+  if (conductorScheduleId !== null) {
+    transport.clear(conductorScheduleId);
+  }
 
   currentPlaybackState = 'BATTLE';
   nextPlaybackState = 'BATTLE';
 
-  // Koji Kondo Battle transition: Fade/start from 2nd battle cue (Battle Block 2) at the current beat position
-  currentBattleBlockIndex = 1; // Index 1 is BATTLE_BLOCKS[1] (Battle Block 2, Bars 72..80)
+  // Align battle cue (Battle Block 2) smoothly to current playback offset
+  const transportSeconds = transport.seconds;
+  const currentOffsetInBlock = transportSeconds - currentBlockStartTimeSec;
+
+  currentBattleBlockIndex = 1; // Index 1 is Battle Block 2 (Bars 72..80)
   const battleBlock = BATTLE_BLOCKS[1];
 
-  // Schedule the remaining notes of Battle Block 2 starting immediately at the current transport second
-  scheduleNextBlock(transportSeconds, battleBlock, currentBeatInBlock);
+  currentBlockStartTimeSec = transportSeconds - currentOffsetInBlock;
+  currentBlockDurationSec = battleBlock.durationSec;
+
+  midiData.tracks.forEach((track, trIdx) => {
+    const synth = getSynthForTrack(trIdx);
+
+    const notesInBlock = track.notes.filter(n =>
+      n.ticks >= battleBlock.startTicks && n.ticks < battleBlock.endTicks
+    );
+
+    notesInBlock.forEach((note) => {
+      const relativeNoteTimeSec = note.time - battleBlock.startTimeSec;
+      if (relativeNoteTimeSec >= currentOffsetInBlock) {
+        const exactTimeSec = transportSeconds + (relativeNoteTimeSec - currentOffsetInBlock);
+        const exactDurationSec = note.duration;
+
+        const eventId = transport.schedule((scheduledTime) => {
+          triggerNote(synth, note, exactDurationSec, scheduledTime);
+        }, exactTimeSec);
+
+        activeScheduledEvents.push(eventId);
+      }
+    });
+  });
+
+  // Next block start time
+  nextScheduledBlockTimeSec = currentBlockStartTimeSec + battleBlock.durationSec;
+  conductorScheduleId = transport.schedule((scheduledTime) => {
+    scheduleBlockChain(scheduledTime);
+  }, nextScheduledBlockTimeSec);
 }
