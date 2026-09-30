@@ -61,7 +61,6 @@ function buildSamplerUrls(filterFn) {
   for (const [key, item] of Object.entries(manifest)) {
     if (filterFn(key, item)) {
       const noteName = midiToNoteName(item.pitch);
-      // Vite serves files in 'public/soundfont/...' at '/soundfont/...'
       const relativePath = item.file.startsWith('soundfont/') ? item.file.replace('soundfont/', '') : item.file;
       urls[noteName] = relativePath;
     }
@@ -81,7 +80,8 @@ const percussionUrls = buildSamplerUrls(k => k.startsWith('Standard Snare') || k
 const masterLimiter = new Tone.Limiter(-1).toDestination();
 const masterReverb = new Tone.Reverb({ decay: 2.2, wet: 0.2 }).connect(masterLimiter);
 
-const baseUrl = '/soundfont/';
+// Relative baseUrl so it works on GitHub Pages subpaths (e.g., /Hyrule-musical-adventure/soundfont/)
+const baseUrl = 'soundfont/';
 
 function createSoundfontRack() {
   const volumeNode = new Tone.Volume(0).connect(masterReverb);
@@ -181,7 +181,7 @@ function getSamplerForTrack(rack, trackIndex) {
   return rack.brassSampler;
 }
 
-// Helper to trigger note on sampler / synth without timing errors
+// Helper to trigger note on sampler / synth safely without throwing if buffer is unready
 function triggerSafeNote(rack, sampler, note, durationSec, time) {
   const now = Tone.now();
   let safeTime = Math.max(time, now);
@@ -199,12 +199,18 @@ function triggerSafeNote(rack, sampler, note, durationSec, time) {
       rack.hihatSynth._lastTriggerTime = safeTime;
       rack.hihatSynth.triggerAttackRelease(durationSec, safeTime, note.velocity * 0.7);
     } else if (midiPitch === 47 || midiPitch === 48) {
-      rack.timpaniSampler.triggerAttackRelease('D3', durationSec, safeTime, note.velocity);
+      if (rack.timpaniSampler && rack.timpaniSampler.loaded) {
+        rack.timpaniSampler.triggerAttackRelease('D3', durationSec, safeTime, note.velocity);
+      }
     } else {
-      rack.percussionSampler.triggerAttackRelease('C4', durationSec, safeTime, note.velocity);
+      if (rack.percussionSampler && rack.percussionSampler.loaded) {
+        rack.percussionSampler.triggerAttackRelease('C4', durationSec, safeTime, note.velocity);
+      }
     }
   } else {
-    sampler.triggerAttackRelease(note.name, durationSec, safeTime, note.velocity);
+    if (sampler && sampler.loaded) {
+      sampler.triggerAttackRelease(note.name, durationSec, safeTime, note.velocity);
+    }
   }
 }
 
