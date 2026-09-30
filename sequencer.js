@@ -285,9 +285,10 @@ export function whenAudioLoaded() {
 export async function changeGameMode(newMode) {
   const transport = Tone.getTransport();
 
-  if (Tone.getContext().state !== 'running') {
-    await Tone.start();
-    console.log("AudioContext activated!");
+  await Tone.start();
+
+  if (transport.state !== 'started') {
+    console.log("AudioContext activated and Transport started!");
     
     currentPlaybackState = newMode;
     nextPlaybackState = newMode;
