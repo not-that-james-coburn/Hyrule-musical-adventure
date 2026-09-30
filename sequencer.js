@@ -81,7 +81,7 @@ const masterLimiter = new Tone.Limiter(-1).toDestination();
 const masterReverb = new Tone.Reverb({ decay: 2.2, wet: 0.2 }).connect(masterLimiter);
 
 // Relative baseUrl so it works on GitHub Pages subpaths (e.g., /Hyrule-musical-adventure/soundfont/)
-const baseUrl = new URL('soundfont/', import.meta.url).pathname;
+const baseUrl = '/Hyrule-musical-adventure/soundfont/';
 
 function createSoundfontRack() {
   const volumeNode = new Tone.Volume(0).connect(masterReverb);
