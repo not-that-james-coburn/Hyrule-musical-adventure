@@ -80,8 +80,8 @@ const percussionUrls = buildSamplerUrls(k => k.startsWith('Standard Snare') || k
 const masterLimiter = new Tone.Limiter(-1).toDestination();
 const masterReverb = new Tone.Reverb({ decay: 2.2, wet: 0.2 }).connect(masterLimiter);
 
-// Relative baseUrl so it works on GitHub Pages subpaths (e.g., /Hyrule-musical-adventure/soundfont/)
-const baseUrl = 'soundfont/';
+// Use import.meta.env.BASE_URL to dynamically align with Vite base path (e.g. ./ or /Hyrule-musical-adventure/)
+const baseUrl = `${import.meta.env.BASE_URL || './'}soundfont/`;
 
 function createSoundfontRack() {
   const volumeNode = new Tone.Volume(0).connect(masterReverb);
