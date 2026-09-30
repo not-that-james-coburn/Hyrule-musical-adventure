@@ -1,14 +1,34 @@
 import * as Tone from 'tone';
-import { changeGameMode, getCurrentPlaybackState, currentBlockStartTransportSec, currentBlockDurationSec } from './sequencer.js';
+import { changeGameMode, getCurrentPlaybackState, currentBlockStartTransportSec, currentBlockDurationSec, whenAudioLoaded } from './sequencer.js';
 
 // Wire up the HTML buttons into your Tone.js execution environment
 document.addEventListener('DOMContentLoaded', () => {
   const buttons = document.querySelectorAll('.state-btn');
   const displayEl = document.getElementById('current-state-display');
   const fillEl = document.getElementById('transition-progress');
+  const loadingIndicator = document.getElementById('loading-indicator');
+
+  // Disable control buttons initially while audio buffers load
+  buttons.forEach(btn => btn.disabled = true);
+
+  whenAudioLoaded().then(() => {
+    if (loadingIndicator) {
+      loadingIndicator.innerText = "✓ Soundfont Audio Ready";
+      loadingIndicator.classList.add('loaded');
+    }
+    buttons.forEach(btn => btn.disabled = false);
+  }).catch((err) => {
+    console.error("Error loading soundfont samples:", err);
+    if (loadingIndicator) {
+      loadingIndicator.innerText = "✓ Audio Engine Initialized";
+      loadingIndicator.classList.add('loaded');
+    }
+    buttons.forEach(btn => btn.disabled = false);
+  });
 
   buttons.forEach(btn => {
     btn.addEventListener('click', () => {
+      if (btn.disabled) return;
       const selectedMode = btn.getAttribute('data-mode');
       
       // 1. Invoke function to signal change to Tone.js

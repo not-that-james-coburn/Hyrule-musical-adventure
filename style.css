@@ -70,6 +70,24 @@ body {
 .mode-quiet { color: var(--accent-blue); }
 .mode-battle { color: var(--accent-red); animation: pulse 1s infinite alternate; }
 
+.loading-badge {
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    display: inline-block;
+    transition: all 0.3s ease;
+}
+
+.loading-badge.loaded {
+    color: var(--accent-green);
+    background: rgba(74, 222, 128, 0.15);
+    border-color: rgba(74, 222, 128, 0.4);
+}
+
 /* Progress Bar Tracking */
 .progress-container {
     margin-bottom: 2rem;

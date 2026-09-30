@@ -1,9 +1,20 @@
 {
+  "name": "hyrule-field-sequencer",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
   "dependencies": {
     "@tonejs/midi": "^2.0.28",
     "soundfont-player": "^0.12.0",
     "soundfont2": "^0.5.0",
     "spessasynth_lib": "^4.3.14",
     "tone": "^15.1.22"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
   }
 }
