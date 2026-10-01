@@ -20,7 +20,7 @@ export let currentBlockDurationSec = 13.333;
 export let currentBlockStartTransportSec = 0;
 
 // 2. Block Roadmap Definitions (in measure units and tick ranges)
-const INTRO_BLOCK = { id: 0, startBar: 0, endBar: 8, startTicks: 0, endTicks: 30720, startTimeSec: 1.200, nextTimeSec: 15.067, durationSec: 13.867 };
+const INTRO_BLOCK = { id: 0, startBar: 0, endBar: 8, startTicks: 0, endTicks: 30720, startTimeSec: 0.000, nextTimeSec: 15.067, durationSec: 15.067 };
 
 const EXPLORATION_BLOCKS = [
   { id: 1, startBar: 8, endBar: 16, startTicks: 30720, endTicks: 61440, startTimeSec: 15.067, nextTimeSec: 29.267, durationSec: 14.200 },
