@@ -1,6 +1,6 @@
 import * as Tone from 'tone';
-import midiData from './hyrule_field_midi.json' with { type: 'json' };
-import manifest from './public/soundfont/manifest.json' with { type: 'json' };
+import midiData from './hyrule_field_midi.json';
+import manifest from './public/soundfont/manifest.json';
 
 // 1. Core State & Timing Configuration
 const PPQ = midiData.header.ppq || 960;
@@ -81,7 +81,8 @@ const masterLimiter = new Tone.Limiter(-1).toDestination();
 const masterReverb = new Tone.Reverb({ decay: 2.2, wet: 0.2 }).connect(masterLimiter);
 
 // Use import.meta.env.BASE_URL to dynamically align with Vite base path (e.g. ./ or /Hyrule-musical-adventure/)
-const baseUrl = `${import.meta.env.BASE_URL || './'}soundfont/`;
+const envBase = import.meta.env.BASE_URL || './';
+const baseUrl = `${envBase.endsWith('/') ? envBase : envBase + '/'}soundfont/`;
 
 function createSoundfontRack() {
   const volumeNode = new Tone.Volume(0).connect(masterReverb);
@@ -284,8 +285,20 @@ export function getCurrentPlaybackState() {
   return currentPlaybackState;
 }
 
-export function whenAudioLoaded() {
-  return Tone.loaded();
+export function whenAudioLoaded(timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    let timer = setTimeout(() => {
+      reject(new Error("Audio sample loading timed out after " + (timeoutMs / 1000) + "s"));
+    }, timeoutMs);
+
+    Tone.loaded().then(() => {
+      clearTimeout(timer);
+      resolve();
+    }).catch((err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
 }
 
 export async function changeGameMode(newMode) {

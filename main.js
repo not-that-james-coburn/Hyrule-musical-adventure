@@ -15,15 +15,17 @@ document.addEventListener('DOMContentLoaded', () => {
     if (loadingIndicator) {
       loadingIndicator.innerText = "✓ Soundfont Audio Ready";
       loadingIndicator.classList.add('loaded');
+      loadingIndicator.classList.remove('error');
     }
     buttons.forEach(btn => btn.disabled = false);
   }).catch((err) => {
     console.error("Error loading soundfont samples:", err);
     if (loadingIndicator) {
-      loadingIndicator.innerText = "✓ Audio Engine Initialized";
-      loadingIndicator.classList.add('loaded');
+      loadingIndicator.innerText = "❌ Failed to load audio samples. Please check connection and refresh.";
+      loadingIndicator.classList.add('error');
+      loadingIndicator.classList.remove('loaded');
     }
-    buttons.forEach(btn => btn.disabled = false);
+    buttons.forEach(btn => btn.disabled = true);
   });
 
   buttons.forEach(btn => {

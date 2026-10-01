@@ -88,6 +88,12 @@ body {
     border-color: rgba(74, 222, 128, 0.4);
 }
 
+.loading-badge.error {
+    color: var(--accent-red);
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.4);
+}
+
 /* Progress Bar Tracking */
 .progress-container {
     margin-bottom: 2rem;
