@@ -20,7 +20,7 @@ export let currentBlockDurationSec = 13.333;
 export let currentBlockStartTransportSec = 0;
 
 // 2. Block Roadmap Definitions (in measure units and tick ranges)
-// INTRO_BLOCK now combines the 9-bar intro fanfare and the first 8-bar main theme statement (Bars 0–17, ticks 0..65280)
+// INTRO_BLOCK combines the 9-bar intro fanfare and the first 8-bar main theme statement (Bars 0–17, ticks 0..65280)
 const INTRO_BLOCK = { id: 0, startBar: 0, endBar: 17, startTicks: 0, endTicks: 65280, startTimeSec: 0.000, nextTimeSec: 30.867, durationSec: 30.867 };
 
 // Random Exploration cues loop across Blocks 2 through 7 (Bars 17–65, 8 measures each)
@@ -34,19 +34,20 @@ const EXPLORATION_BLOCKS = [
 ];
 
 const BATTLE_BLOCKS = [
-  { id: 8, startBar: 65, endBar: 73, startTicks: 249600, endTicks: 280320, startTimeSec: 107.667, nextTimeSec: 120.467, durationSec: 12.800 },
-  { id: 9, startBar: 73, endBar: 81, startTicks: 280320, endTicks: 311040, startTimeSec: 120.467, nextTimeSec: 133.267, durationSec: 12.800 },
-  { id: 10, startBar: 81, endBar: 89, startTicks: 311040, endTicks: 341760, startTimeSec: 133.267, nextTimeSec: 146.067, durationSec: 12.800 },
-  { id: 11, startBar: 89, endBar: 97, startTicks: 341760, endTicks: 372480, startTimeSec: 146.067, nextTimeSec: 158.867, durationSec: 12.800 },
-  { id: 12, startBar: 97, endBar: 105, startTicks: 372480, endTicks: 403200, startTimeSec: 158.867, nextTimeSec: 171.667, durationSec: 12.800 },
-  { id: 13, startBar: 105, endBar: 113, startTicks: 403200, endTicks: 433920, startTimeSec: 171.667, nextTimeSec: 184.467, durationSec: 12.800 }
+  { id: 8, startBar: 64, endBar: 72, startTicks: 245760, endTicks: 276480, startTimeSec: 106.067, nextTimeSec: 118.867, durationSec: 12.800 },
+  { id: 9, startBar: 72, endBar: 80, startTicks: 276480, endTicks: 307200, startTimeSec: 118.867, nextTimeSec: 131.667, durationSec: 12.800 },
+  { id: 10, startBar: 80, endBar: 88, startTicks: 307200, endTicks: 337920, startTimeSec: 131.667, nextTimeSec: 144.467, durationSec: 12.800 },
+  { id: 11, startBar: 88, endBar: 96, startTicks: 337920, endTicks: 368640, startTimeSec: 144.467, nextTimeSec: 157.267, durationSec: 12.800 },
+  { id: 12, startBar: 96, endBar: 104, startTicks: 368640, endTicks: 399360, startTimeSec: 157.267, nextTimeSec: 170.067, durationSec: 12.800 },
+  { id: 13, startBar: 104, endBar: 112, startTicks: 399360, endTicks: 430080, startTimeSec: 170.067, nextTimeSec: 182.867, durationSec: 12.800 }
 ];
 
 const QUIET_BLOCKS = [
-  { id: 18, startBar: 144, endBar: 152, startTicks: 552960, endTicks: 583680, startTimeSec: 234.867, nextTimeSec: 249.026, durationSec: 14.159 },
-  { id: 19, startBar: 152, endBar: 160, startTicks: 583680, endTicks: 614400, startTimeSec: 249.026, nextTimeSec: 262.804, durationSec: 13.778 },
-  { id: 20, startBar: 160, endBar: 168, startTicks: 614400, endTicks: 645120, startTimeSec: 262.804, nextTimeSec: 276.518, durationSec: 13.714 },
-  { id: 21, startBar: 168, endBar: 176, startTicks: 645120, endTicks: 675840, startTimeSec: 276.518, nextTimeSec: 289.432, durationSec: 12.914 }
+  { id: 18, startBar: 137, endBar: 145, startTicks: 526080, endTicks: 556800, startTimeSec: 222.867, nextTimeSec: 236.582, durationSec: 13.714 },
+  { id: 19, startBar: 145, endBar: 153, startTicks: 556800, endTicks: 587520, startTimeSec: 236.582, nextTimeSec: 250.804, durationSec: 14.222 },
+  { id: 20, startBar: 153, endBar: 161, startTicks: 587520, endTicks: 618240, startTimeSec: 250.804, nextTimeSec: 264.518, durationSec: 13.714 },
+  { id: 21, startBar: 161, endBar: 169, startTicks: 618240, endTicks: 648960, startTimeSec: 264.518, nextTimeSec: 278.232, durationSec: 13.714 },
+  { id: 22, startBar: 169, endBar: 177, startTicks: 648960, endTicks: 679680, startTimeSec: 278.232, nextTimeSec: 291.032, durationSec: 12.800 }
 ];
 
 // Helper to convert MIDI pitch number to note name (e.g. 60 -> "C4")
@@ -336,9 +337,14 @@ function scheduleBlockChain(startTransportSec) {
 
   const nextScheduledBlockTransportSec = startTransportSec + chosenBlock.durationSec;
 
+  // Pre-schedule next block calculation slightly ahead of boundary (0.2s before transition time)
+  // to prevent audio engine thread latency or garbage collection pauses at the boundary
+  const leadTimeSec = 0.2;
+  const scheduleTriggerSec = Math.max(startTransportSec, nextScheduledBlockTransportSec - leadTimeSec);
+
   conductorScheduleId = transport.schedule((scheduledTime) => {
     scheduleBlockChain(nextScheduledBlockTransportSec);
-  }, nextScheduledBlockTransportSec);
+  }, scheduleTriggerSec);
 }
 
 // 5. UI Trigger Functions & Loading Indicator Promise
