@@ -134,39 +134,47 @@ async function detectAndInitAudioEngine() {
     }
   }
 
-  const brassUrls = buildSamplerUrls(k => k.startsWith('Brass Section') || k.startsWith('Trombone') || k.startsWith('Trumpet'));
-  const stringUrls = buildSamplerUrls(k => k.startsWith('StrLoop') || k.startsWith('Cello'));
-  const windUrls = buildSamplerUrls(k => k.startsWith('Flute') || k.startsWith('Tenor Sax') || k.startsWith('Ocarina'));
-  const harpUrls = buildSamplerUrls(k => k.startsWith('Orchestral Harp') || k.startsWith('Grand Piano') || k.startsWith('Vibraphone') || k.startsWith('Marimba') || k.startsWith('Accordion'));
-  const bassUrls = buildSamplerUrls(k => k.startsWith('Double Bass') || k.startsWith('Pick Bass'));
-  const timpaniUrls = buildSamplerUrls(k => k.startsWith('Timpani'));
-  const percussionUrls = buildSamplerUrls(k => k.startsWith('Standard Snare') || k.startsWith('Jazz Snare') || k.startsWith('Standard Tom'));
+  const sampleSpecs = {
+    piano: { filter: k => k.startsWith('Grand Piano'), defaultVol: -6 },
+    trombone: { filter: k => k.startsWith('Trombone'), defaultVol: -2 },
+    trumpet: { filter: k => k.startsWith('Trumpet'), defaultVol: -2 },
+    brassSection: { filter: k => k.startsWith('Brass Section'), defaultVol: -3 },
+    stringEnsemble: { filter: k => k.startsWith('StrLoop'), defaultVol: -5 },
+    stringEnsemble2: { filter: k => k.startsWith('StrLoop'), defaultVol: -5 },
+    cello: { filter: k => k.startsWith('Cello'), defaultVol: -4 },
+    doubleBass: { filter: k => k.startsWith('Double Bass'), defaultVol: -3 },
+    pickBass: { filter: k => k.startsWith('Pick Bass'), defaultVol: -2 },
+    flute: { filter: k => k.startsWith('Flute'), defaultVol: -3 },
+    tenorSax: { filter: k => k.startsWith('Tenor Sax'), defaultVol: -3 },
+    ocarina: { filter: k => k.startsWith('Ocarina'), defaultVol: -2 },
+    harp: { filter: k => k.startsWith('Orchestral Harp'), defaultVol: -4 },
+    accordion: { filter: k => k.startsWith('Accordion'), defaultVol: -5 },
+    marimba: { filter: k => k.startsWith('Marimba'), defaultVol: -3 },
+    vibraphone: { filter: k => k.startsWith('Vibraphone'), defaultVol: -3 },
+    timpani: { filter: k => k.startsWith('Timpani'), defaultVol: -2 },
+    snare: { filter: k => k.startsWith('Standard Snare 3') || k.startsWith('Jazz Snare'), defaultVol: -3 },
+    tom: { filter: k => k.startsWith('Standard Tom 5'), defaultVol: -3 }
+  };
+
+  const sampleUrlMaps = {};
+  for (const [instKey, spec] of Object.entries(sampleSpecs)) {
+    sampleUrlMaps[instKey] = buildSamplerUrls(spec.filter);
+  }
 
   function createSoundfontRack(baseUrl) {
     const volumeNode = new Tone.Volume(0).connect(masterReverb);
+    const samplers = {};
 
-    const brassSampler = new Tone.Sampler({ urls: brassUrls, baseUrl }).connect(volumeNode);
-    brassSampler.volume.value = -4;
+    for (const [instKey, spec] of Object.entries(sampleSpecs)) {
+      const urls = sampleUrlMaps[instKey];
+      if (Object.keys(urls).length > 0) {
+        const sampler = new Tone.Sampler({ urls, baseUrl }).connect(volumeNode);
+        sampler.volume.value = spec.defaultVol;
+        samplers[instKey] = sampler;
+      }
+    }
 
-    const stringSampler = new Tone.Sampler({ urls: stringUrls, baseUrl }).connect(volumeNode);
-    stringSampler.volume.value = -6;
-
-    const windSampler = new Tone.Sampler({ urls: windUrls, baseUrl }).connect(volumeNode);
-    windSampler.volume.value = -4;
-
-    const harpSampler = new Tone.Sampler({ urls: harpUrls, baseUrl }).connect(volumeNode);
-    harpSampler.volume.value = -6;
-
-    const bassSampler = new Tone.Sampler({ urls: bassUrls, baseUrl }).connect(volumeNode);
-    bassSampler.volume.value = -4;
-
-    const timpaniSampler = new Tone.Sampler({ urls: timpaniUrls, baseUrl }).connect(volumeNode);
-    timpaniSampler.volume.value = -4;
-
-    const percussionSampler = new Tone.Sampler({ urls: percussionUrls, baseUrl }).connect(volumeNode);
-    percussionSampler.volume.value = -4;
-
-    // Fallback synths for percussive elements without samples (kick, hi-hat)
+    // Fallback synths for percussive elements without soundfont samples (kick, hi-hat)
     const kickSynth = new Tone.MembraneSynth({
       pitchDecay: 0.05, octaves: 4, oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay: 0.2, sustain: 0, release: 0.1 }
     }).connect(masterLimiter);
@@ -179,20 +187,14 @@ async function detectAndInitAudioEngine() {
     hihatSynth.volume.value = -22;
 
     function releaseAll() {
-      [brassSampler, stringSampler, windSampler, harpSampler, bassSampler, timpaniSampler, percussionSampler].forEach(s => {
+      Object.values(samplers).forEach(s => {
         if (s && typeof s.releaseAll === 'function') s.releaseAll();
       });
     }
 
     return {
       volumeNode,
-      brassSampler,
-      stringSampler,
-      windSampler,
-      harpSampler,
-      bassSampler,
-      timpaniSampler,
-      percussionSampler,
+      samplers,
       kickSynth,
       hihatSynth,
       releaseAll
@@ -209,38 +211,62 @@ async function detectAndInitAudioEngine() {
   engineInitialized = true;
 }
 
-function getSamplerForTrack(rack, trackIndex) {
-  if (!midiData || !midiData.tracks) return rack.brassSampler;
+// Helper to resolve the correct instrument key for a track based on track and channel metadata
+function getInstrumentKeyForTrack(trackIndex) {
+  if (!midiData || !midiData.tracks) return 'piano';
   const tr = midiData.tracks[trackIndex];
-  if (!tr) return rack.brassSampler;
+  if (!tr) return 'piano';
 
-  const instName = (tr.instrument ? tr.instrument.name : '').toLowerCase();
   const channel = tr.channel;
+  if (channel === 9) return 'percussion';
 
-  if (channel === 9) {
-    return 'percussion';
+  const instNumber = tr.instrument ? tr.instrument.number : 0;
+  const instName = (tr.instrument ? tr.instrument.name : '').toLowerCase();
+
+  // If track has a specific non-piano instrument definition, map it directly
+  if (instNumber !== 0 && instName) {
+    if (instName.includes('trombone')) return 'trombone';
+    if (instName.includes('trumpet')) return 'trumpet';
+    if (instName.includes('brass section') || instName.includes('brass')) return 'brassSection';
+    if (instName.includes('string ensemble 2')) return 'stringEnsemble2';
+    if (instName.includes('string') || instName.includes('ensemble')) return 'stringEnsemble';
+    if (instName.includes('contrabass')) return 'doubleBass';
+    if (instName.includes('tenor sax') || instName.includes('sax')) return 'tenorSax';
+    if (instName.includes('flute')) return 'flute';
+    if (instName.includes('ocarina')) return 'ocarina';
+    if (instName.includes('harp')) return 'harp';
+    if (instName.includes('reed organ') || instName.includes('organ') || instName.includes('accordion')) return 'accordion';
+    if (instName.includes('electric bass') || instName.includes('pick bass') || instName.includes('bass')) return 'pickBass';
+    if (instName.includes('marimba')) return 'marimba';
+    if (instName.includes('vibraphone')) return 'vibraphone';
+    if (instName.includes('timpani')) return 'timpani';
   }
 
-  if (instName.includes('trombone') || instName.includes('trumpet') || instName.includes('brass')) {
-    return rack.brassSampler;
+  // Channel fallbacks when track instrument is default 0 (Acoustic Grand Piano)
+  switch (channel) {
+    case 0: return 'trombone';
+    case 1: return 'trumpet';
+    case 2: return 'brassSection';
+    case 3: return 'stringEnsemble';
+    case 4: return 'tenorSax';
+    case 5: return 'flute';
+    case 6: return 'harp';
+    case 7: return 'accordion';
+    case 8: return 'pickBass';
+    case 10: return 'marimba';
+    case 11: return 'ocarina';
+    case 12: return 'vibraphone';
+    case 13: return 'stringEnsemble';
+    case 14: return 'timpani';
+    case 15: return 'doubleBass';
+    default: return 'piano';
   }
-  if (instName.includes('string') || instName.includes('contrabass')) {
-    return rack.stringSampler;
-  }
-  if (instName.includes('flute') || instName.includes('ocarina') || instName.includes('sax')) {
-    return rack.windSampler;
-  }
-  if (instName.includes('harp') || instName.includes('vibraphone') || instName.includes('marimba') || instName.includes('organ') || instName.includes('piano')) {
-    return rack.harpSampler;
-  }
-  if (instName.includes('bass')) {
-    return rack.bassSampler;
-  }
-  if (instName.includes('timpani')) {
-    return rack.timpaniSampler;
-  }
+}
 
-  return rack.brassSampler;
+function getSamplerForTrack(rack, trackIndex) {
+  const key = getInstrumentKeyForTrack(trackIndex);
+  if (key === 'percussion') return 'percussion';
+  return rack.samplers[key] || rack.samplers.piano;
 }
 
 // Helper to trigger note on sampler / synth safely without throwing if buffer is unready
@@ -250,23 +276,33 @@ function triggerSafeNote(rack, sampler, note, durationSec, time) {
 
   if (sampler === 'percussion') {
     const midiPitch = note.midi;
-    if (midiPitch === 35 || midiPitch === 36) {
+    // Percussion note mapping for General MIDI drum channel (Channel 9)
+    if (midiPitch === 35 || midiPitch === 36) { // Acoustic / Electric Bass Drum (Kick)
       const lastTime = rack.kickSynth._lastTriggerTime || 0;
       safeTime = Math.max(safeTime, lastTime + 0.002);
       rack.kickSynth._lastTriggerTime = safeTime;
       rack.kickSynth.triggerAttackRelease('C1', durationSec, safeTime, note.velocity);
-    } else if (midiPitch === 42 || midiPitch === 44) {
+    } else if (midiPitch === 38 || midiPitch === 40) { // Acoustic / Electric Snare Drum
+      const snareSampler = rack.samplers.snare;
+      if (snareSampler && snareSampler.loaded) {
+        snareSampler.triggerAttackRelease('C4', durationSec, safeTime, note.velocity);
+      }
+    } else if (midiPitch === 42 || midiPitch === 44) { // Closed Hi-Hat / Pedal Hi-Hat
       const lastTime = rack.hihatSynth._lastTriggerTime || 0;
       safeTime = Math.max(safeTime, lastTime + 0.002);
       rack.hihatSynth._lastTriggerTime = safeTime;
       rack.hihatSynth.triggerAttackRelease(durationSec, safeTime, note.velocity * 0.7);
-    } else if (midiPitch === 47 || midiPitch === 48) {
-      if (rack.timpaniSampler && rack.timpaniSampler.loaded) {
-        rack.timpaniSampler.triggerAttackRelease('D3', durationSec, safeTime, note.velocity);
+    } else if (midiPitch >= 41 && midiPitch <= 50) { // Toms
+      const tomSampler = rack.samplers.tom;
+      if (tomSampler && tomSampler.loaded) {
+        tomSampler.triggerAttackRelease('C4', durationSec, safeTime, note.velocity);
+      } else if (rack.samplers.timpani && rack.samplers.timpani.loaded) {
+        rack.samplers.timpani.triggerAttackRelease('D3', durationSec, safeTime, note.velocity);
       }
-    } else {
-      if (rack.percussionSampler && rack.percussionSampler.loaded) {
-        rack.percussionSampler.triggerAttackRelease('C4', durationSec, safeTime, note.velocity);
+    } else { // Fallback snare or tom for other percussion triggers
+      const snareSampler = rack.samplers.snare;
+      if (snareSampler && snareSampler.loaded) {
+        snareSampler.triggerAttackRelease('C4', durationSec, safeTime, note.velocity);
       }
     }
   } else {
