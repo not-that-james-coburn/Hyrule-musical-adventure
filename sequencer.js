@@ -1,11 +1,11 @@
 import * as Tone from 'tone';
-import midiData from './hyrule_field_midi.json';
-import manifest from './public/soundfont/manifest.json';
+
+let midiData = null;
+let manifest = null;
 
 // 1. Core State & Timing Configuration
-const PPQ = midiData.header.ppq || 960;
+let PPQ = 960;
 const BARS_PER_BLOCK = 8;
-const TICKS_PER_BLOCK = PPQ * 4 * BARS_PER_BLOCK; // 30,720 ticks per 8-bar block
 const CROSSFADE_TIME = 0.8; // Duration in seconds for smooth crossfade transition
 
 let currentPlaybackState = 'EXPLORATION'; 
@@ -58,6 +58,7 @@ function midiToNoteName(midi) {
 // Build instrument sample mappings from manifest.json
 function buildSamplerUrls(filterFn) {
   const urls = {};
+  if (!manifest) return urls;
   for (const [key, item] of Object.entries(manifest)) {
     if (filterFn(key, item)) {
       const noteName = midiToNoteName(item.pitch);
@@ -68,88 +69,146 @@ function buildSamplerUrls(filterFn) {
   return urls;
 }
 
-const brassUrls = buildSamplerUrls(k => k.startsWith('Brass Section') || k.startsWith('Trombone') || k.startsWith('Trumpet'));
-const stringUrls = buildSamplerUrls(k => k.startsWith('StrLoop') || k.startsWith('Cello'));
-const windUrls = buildSamplerUrls(k => k.startsWith('Flute') || k.startsWith('Tenor Sax') || k.startsWith('Ocarina'));
-const harpUrls = buildSamplerUrls(k => k.startsWith('Orchestral Harp') || k.startsWith('Grand Piano') || k.startsWith('Vibraphone') || k.startsWith('Marimba') || k.startsWith('Accordion'));
-const bassUrls = buildSamplerUrls(k => k.startsWith('Double Bass') || k.startsWith('Pick Bass'));
-const timpaniUrls = buildSamplerUrls(k => k.startsWith('Timpani'));
-const percussionUrls = buildSamplerUrls(k => k.startsWith('Standard Snare') || k.startsWith('Jazz Snare') || k.startsWith('Standard Tom'));
-
 // 3. Master Audio Output Pipeline
-const masterLimiter = new Tone.Limiter(-1).toDestination();
-const masterReverb = new Tone.Reverb({ decay: 2.2, wet: 0.2 }).connect(masterLimiter);
+let masterLimiter;
+let masterReverb;
+let rackA = null;
+let rackB = null;
+let activeRack = null;
+let inactiveRack = null;
+let engineInitialized = false;
+let initPromise = null;
 
-// Use import.meta.env.BASE_URL to dynamically align with Vite base path (e.g. ./ or /Hyrule-musical-adventure/)
-const envBase = import.meta.env.BASE_URL || './';
-const baseUrl = `${envBase.endsWith('/') ? envBase : envBase + '/'}soundfont/`;
+async function detectAndInitAudioEngine() {
+  if (engineInitialized) return;
 
-function createSoundfontRack() {
-  const volumeNode = new Tone.Volume(0).connect(masterReverb);
+  masterLimiter = new Tone.Limiter(-1).toDestination();
+  masterReverb = new Tone.Reverb({ decay: 2.2, wet: 0.2 }).connect(masterLimiter);
 
-  const brassSampler = new Tone.Sampler({ urls: brassUrls, baseUrl }).connect(volumeNode);
-  brassSampler.volume.value = -4;
+  const envBase = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) || './';
+  const cleanBase = envBase.endsWith('/') ? envBase : envBase + '/';
 
-  const stringSampler = new Tone.Sampler({ urls: stringUrls, baseUrl }).connect(volumeNode);
-  stringSampler.volume.value = -6;
+  let soundfontBaseUrl = `${cleanBase}soundfont/`;
 
-  const windSampler = new Tone.Sampler({ urls: windUrls, baseUrl }).connect(volumeNode);
-  windSampler.volume.value = -4;
+  const manifestCandidateUrls = [
+    `${cleanBase}soundfont/`,
+    `${cleanBase}public/soundfont/`,
+    './soundfont/',
+    './public/soundfont/'
+  ];
 
-  const harpSampler = new Tone.Sampler({ urls: harpUrls, baseUrl }).connect(volumeNode);
-  harpSampler.volume.value = -6;
-
-  const bassSampler = new Tone.Sampler({ urls: bassUrls, baseUrl }).connect(volumeNode);
-  bassSampler.volume.value = -4;
-
-  const timpaniSampler = new Tone.Sampler({ urls: timpaniUrls, baseUrl }).connect(volumeNode);
-  timpaniSampler.volume.value = -4;
-
-  const percussionSampler = new Tone.Sampler({ urls: percussionUrls, baseUrl }).connect(volumeNode);
-  percussionSampler.volume.value = -4;
-
-  // Fallback synths for percussive elements without samples (kick, hi-hat)
-  const kickSynth = new Tone.MembraneSynth({
-    pitchDecay: 0.05, octaves: 4, oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay: 0.2, sustain: 0, release: 0.1 }
-  }).connect(masterLimiter);
-  kickSynth.volume.value = -6;
-
-  const hihatSynth = new Tone.MetalSynth({
-    frequency: 200, envelope: { attack: 0.001, decay: 0.05, release: 0.05 },
-    harmonicity: 5.1, modulationIndex: 32, resonance: 4000, octaves: 1.5
-  }).connect(masterLimiter);
-  hihatSynth.volume.value = -22;
-
-  function releaseAll() {
-    [brassSampler, stringSampler, windSampler, harpSampler, bassSampler, timpaniSampler, percussionSampler].forEach(s => {
-      if (s && typeof s.releaseAll === 'function') s.releaseAll();
-    });
+  for (const candidate of manifestCandidateUrls) {
+    try {
+      const res = await fetch(`${candidate}manifest.json`);
+      if (res.ok) {
+        soundfontBaseUrl = candidate;
+        manifest = await res.json();
+        break;
+      }
+    } catch (e) {
+      // ignore
+    }
   }
 
-  return {
-    volumeNode,
-    brassSampler,
-    stringSampler,
-    windSampler,
-    harpSampler,
-    bassSampler,
-    timpaniSampler,
-    percussionSampler,
-    kickSynth,
-    hihatSynth,
-    releaseAll
-  };
+  const midiCandidateUrls = [
+    `${cleanBase}hyrule_field_midi.json`,
+    `${cleanBase}public/hyrule_field_midi.json`,
+    './hyrule_field_midi.json',
+    './public/hyrule_field_midi.json'
+  ];
+
+  for (const url of midiCandidateUrls) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        midiData = await res.json();
+        if (midiData && midiData.header && midiData.header.ppq) {
+          PPQ = midiData.header.ppq;
+        }
+        break;
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  const brassUrls = buildSamplerUrls(k => k.startsWith('Brass Section') || k.startsWith('Trombone') || k.startsWith('Trumpet'));
+  const stringUrls = buildSamplerUrls(k => k.startsWith('StrLoop') || k.startsWith('Cello'));
+  const windUrls = buildSamplerUrls(k => k.startsWith('Flute') || k.startsWith('Tenor Sax') || k.startsWith('Ocarina'));
+  const harpUrls = buildSamplerUrls(k => k.startsWith('Orchestral Harp') || k.startsWith('Grand Piano') || k.startsWith('Vibraphone') || k.startsWith('Marimba') || k.startsWith('Accordion'));
+  const bassUrls = buildSamplerUrls(k => k.startsWith('Double Bass') || k.startsWith('Pick Bass'));
+  const timpaniUrls = buildSamplerUrls(k => k.startsWith('Timpani'));
+  const percussionUrls = buildSamplerUrls(k => k.startsWith('Standard Snare') || k.startsWith('Jazz Snare') || k.startsWith('Standard Tom'));
+
+  function createSoundfontRack(baseUrl) {
+    const volumeNode = new Tone.Volume(0).connect(masterReverb);
+
+    const brassSampler = new Tone.Sampler({ urls: brassUrls, baseUrl }).connect(volumeNode);
+    brassSampler.volume.value = -4;
+
+    const stringSampler = new Tone.Sampler({ urls: stringUrls, baseUrl }).connect(volumeNode);
+    stringSampler.volume.value = -6;
+
+    const windSampler = new Tone.Sampler({ urls: windUrls, baseUrl }).connect(volumeNode);
+    windSampler.volume.value = -4;
+
+    const harpSampler = new Tone.Sampler({ urls: harpUrls, baseUrl }).connect(volumeNode);
+    harpSampler.volume.value = -6;
+
+    const bassSampler = new Tone.Sampler({ urls: bassUrls, baseUrl }).connect(volumeNode);
+    bassSampler.volume.value = -4;
+
+    const timpaniSampler = new Tone.Sampler({ urls: timpaniUrls, baseUrl }).connect(volumeNode);
+    timpaniSampler.volume.value = -4;
+
+    const percussionSampler = new Tone.Sampler({ urls: percussionUrls, baseUrl }).connect(volumeNode);
+    percussionSampler.volume.value = -4;
+
+    // Fallback synths for percussive elements without samples (kick, hi-hat)
+    const kickSynth = new Tone.MembraneSynth({
+      pitchDecay: 0.05, octaves: 4, oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay: 0.2, sustain: 0, release: 0.1 }
+    }).connect(masterLimiter);
+    kickSynth.volume.value = -6;
+
+    const hihatSynth = new Tone.MetalSynth({
+      frequency: 200, envelope: { attack: 0.001, decay: 0.05, release: 0.05 },
+      harmonicity: 5.1, modulationIndex: 32, resonance: 4000, octaves: 1.5
+    }).connect(masterLimiter);
+    hihatSynth.volume.value = -22;
+
+    function releaseAll() {
+      [brassSampler, stringSampler, windSampler, harpSampler, bassSampler, timpaniSampler, percussionSampler].forEach(s => {
+        if (s && typeof s.releaseAll === 'function') s.releaseAll();
+      });
+    }
+
+    return {
+      volumeNode,
+      brassSampler,
+      stringSampler,
+      windSampler,
+      harpSampler,
+      bassSampler,
+      timpaniSampler,
+      percussionSampler,
+      kickSynth,
+      hihatSynth,
+      releaseAll
+    };
+  }
+
+  rackA = createSoundfontRack(soundfontBaseUrl);
+  rackB = createSoundfontRack(soundfontBaseUrl);
+  rackB.volumeNode.volume.value = -Infinity; // rackB muted initially
+
+  activeRack = rackA;
+  inactiveRack = rackB;
+
+  engineInitialized = true;
 }
 
-// Dual racks for seamless crossfading
-const rackA = createSoundfontRack();
-const rackB = createSoundfontRack();
-rackB.volumeNode.volume.value = -Infinity; // rackB muted initially
-
-let activeRack = rackA;
-let inactiveRack = rackB;
-
 function getSamplerForTrack(rack, trackIndex) {
+  if (!midiData || !midiData.tracks) return rack.brassSampler;
   const tr = midiData.tracks[trackIndex];
   if (!tr) return rack.brassSampler;
 
@@ -252,6 +311,7 @@ function scheduleBlockChain(startTransportSec) {
   currentBlockDurationSec = chosenBlock.durationSec;
 
   const currentRack = activeRack;
+  if (!currentRack || !midiData || !midiData.tracks) return;
 
   midiData.tracks.forEach((track, trIdx) => {
     const sampler = getSamplerForTrack(currentRack, trIdx);
@@ -286,22 +346,29 @@ export function getCurrentPlaybackState() {
 }
 
 export function whenAudioLoaded(timeoutMs = 15000) {
-  return new Promise((resolve, reject) => {
-    let timer = setTimeout(() => {
-      reject(new Error("Audio sample loading timed out after " + (timeoutMs / 1000) + "s"));
-    }, timeoutMs);
+  if (!initPromise) {
+    initPromise = (async () => {
+      await detectAndInitAudioEngine();
+      return new Promise((resolve, reject) => {
+        let timer = setTimeout(() => {
+          reject(new Error("Audio sample loading timed out after " + (timeoutMs / 1000) + "s"));
+        }, timeoutMs);
 
-    Tone.loaded().then(() => {
-      clearTimeout(timer);
-      resolve();
-    }).catch((err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
-  });
+        Tone.loaded().then(() => {
+          clearTimeout(timer);
+          resolve();
+        }).catch((err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+      });
+    })();
+  }
+  return initPromise;
 }
 
 export async function changeGameMode(newMode) {
+  await whenAudioLoaded();
   const transport = Tone.getTransport();
 
   await Tone.start();
@@ -346,15 +413,21 @@ function triggerImmediateBattleOverride() {
   activeRack = incomingRack;
   inactiveRack = outgoingRack;
 
-  outgoingRack.volumeNode.volume.cancelScheduledValues(Tone.now());
-  outgoingRack.volumeNode.volume.rampTo(-60, CROSSFADE_TIME);
+  if (outgoingRack && outgoingRack.volumeNode) {
+    outgoingRack.volumeNode.volume.cancelScheduledValues(Tone.now());
+    outgoingRack.volumeNode.volume.rampTo(-60, CROSSFADE_TIME);
+  }
 
-  incomingRack.volumeNode.volume.cancelScheduledValues(Tone.now());
-  incomingRack.volumeNode.volume.setValueAtTime(-60, Tone.now());
-  incomingRack.volumeNode.volume.rampTo(0, CROSSFADE_TIME);
+  if (incomingRack && incomingRack.volumeNode) {
+    incomingRack.volumeNode.volume.cancelScheduledValues(Tone.now());
+    incomingRack.volumeNode.volume.setValueAtTime(-60, Tone.now());
+    incomingRack.volumeNode.volume.rampTo(0, CROSSFADE_TIME);
+  }
 
   setTimeout(() => {
-    outgoingRack.releaseAll();
+    if (outgoingRack && typeof outgoingRack.releaseAll === 'function') {
+      outgoingRack.releaseAll();
+    }
   }, CROSSFADE_TIME * 1000);
 
   const transportSeconds = transport.seconds;
@@ -367,27 +440,29 @@ function triggerImmediateBattleOverride() {
   currentBlockStartTransportSec = transportSeconds - currentOffsetInBlock;
   currentBlockDurationSec = battleBlock.durationSec;
 
-  midiData.tracks.forEach((track, trIdx) => {
-    const sampler = getSamplerForTrack(incomingRack, trIdx);
+  if (midiData && midiData.tracks) {
+    midiData.tracks.forEach((track, trIdx) => {
+      const sampler = getSamplerForTrack(incomingRack, trIdx);
 
-    const notesInBlock = track.notes.filter(n =>
-      n.ticks >= battleBlock.startTicks && n.ticks < battleBlock.endTicks
-    );
+      const notesInBlock = track.notes.filter(n =>
+        n.ticks >= battleBlock.startTicks && n.ticks < battleBlock.endTicks
+      );
 
-    notesInBlock.forEach((note) => {
-      const relativeNoteTimeSec = note.time - battleBlock.startTimeSec;
-      if (relativeNoteTimeSec >= currentOffsetInBlock) {
-        const noteTransportSec = currentBlockStartTransportSec + relativeNoteTimeSec;
-        const exactDurationSec = note.duration;
+      notesInBlock.forEach((note) => {
+        const relativeNoteTimeSec = note.time - battleBlock.startTimeSec;
+        if (relativeNoteTimeSec >= currentOffsetInBlock) {
+          const noteTransportSec = currentBlockStartTransportSec + relativeNoteTimeSec;
+          const exactDurationSec = note.duration;
 
-        const eventId = transport.schedule((scheduledTime) => {
-          triggerSafeNote(incomingRack, sampler, note, exactDurationSec, scheduledTime);
-        }, noteTransportSec);
+          const eventId = transport.schedule((scheduledTime) => {
+            triggerSafeNote(incomingRack, sampler, note, exactDurationSec, scheduledTime);
+          }, noteTransportSec);
 
-        activeScheduledEvents.push(eventId);
-      }
+          activeScheduledEvents.push(eventId);
+        }
+      });
     });
-  });
+  }
 
   const nextScheduledBlockTransportSec = currentBlockStartTransportSec + battleBlock.durationSec;
   conductorScheduleId = transport.schedule((scheduledTime) => {
