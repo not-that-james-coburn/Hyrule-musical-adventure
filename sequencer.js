@@ -20,25 +20,26 @@ export let currentBlockDurationSec = 13.333;
 export let currentBlockStartTransportSec = 0;
 
 // 2. Block Roadmap Definitions (in measure units and tick ranges)
-const INTRO_BLOCK = { id: 0, startBar: 0, endBar: 8, startTicks: 0, endTicks: 30720, startTimeSec: 0.000, nextTimeSec: 15.067, durationSec: 15.067 };
+// INTRO_BLOCK now combines the 9-bar intro fanfare and the first 8-bar main theme statement (Bars 0–17, ticks 0..65280)
+const INTRO_BLOCK = { id: 0, startBar: 0, endBar: 17, startTicks: 0, endTicks: 65280, startTimeSec: 0.000, nextTimeSec: 30.867, durationSec: 30.867 };
 
+// Random Exploration cues loop across Blocks 2 through 7 (Bars 17–65, 8 measures each)
 const EXPLORATION_BLOCKS = [
-  { id: 1, startBar: 8, endBar: 16, startTicks: 30720, endTicks: 61440, startTimeSec: 15.067, nextTimeSec: 29.267, durationSec: 14.200 },
-  { id: 2, startBar: 16, endBar: 24, startTicks: 61440, endTicks: 92160, startTimeSec: 29.267, nextTimeSec: 42.067, durationSec: 12.800 },
-  { id: 3, startBar: 24, endBar: 32, startTicks: 92160, endTicks: 122880, startTimeSec: 42.067, nextTimeSec: 54.867, durationSec: 12.800 },
-  { id: 4, startBar: 32, endBar: 40, startTicks: 122880, endTicks: 153600, startTimeSec: 54.867, nextTimeSec: 67.667, durationSec: 12.800 },
-  { id: 5, startBar: 40, endBar: 48, startTicks: 153600, endTicks: 184320, startTimeSec: 67.667, nextTimeSec: 80.467, durationSec: 12.800 },
-  { id: 6, startBar: 48, endBar: 56, startTicks: 184320, endTicks: 215040, startTimeSec: 80.467, nextTimeSec: 93.267, durationSec: 12.800 },
-  { id: 7, startBar: 56, endBar: 64, startTicks: 215040, endTicks: 245760, startTimeSec: 93.267, nextTimeSec: 106.067, durationSec: 12.800 }
+  { id: 2, startBar: 17, endBar: 25, startTicks: 65280, endTicks: 96000, startTimeSec: 30.867, nextTimeSec: 43.667, durationSec: 12.800 },
+  { id: 3, startBar: 25, endBar: 33, startTicks: 96000, endTicks: 126720, startTimeSec: 43.667, nextTimeSec: 56.467, durationSec: 12.800 },
+  { id: 4, startBar: 33, endBar: 41, startTicks: 126720, endTicks: 157440, startTimeSec: 56.467, nextTimeSec: 69.267, durationSec: 12.800 },
+  { id: 5, startBar: 41, endBar: 49, startTicks: 157440, endTicks: 188160, startTimeSec: 69.267, nextTimeSec: 82.067, durationSec: 12.800 },
+  { id: 6, startBar: 49, endBar: 57, startTicks: 188160, endTicks: 218880, startTimeSec: 82.067, nextTimeSec: 94.867, durationSec: 12.800 },
+  { id: 7, startBar: 57, endBar: 65, startTicks: 218880, endTicks: 249600, startTimeSec: 94.867, nextTimeSec: 107.667, durationSec: 12.800 }
 ];
 
 const BATTLE_BLOCKS = [
-  { id: 8, startBar: 64, endBar: 72, startTicks: 245760, endTicks: 276480, startTimeSec: 106.067, nextTimeSec: 118.867, durationSec: 12.800 },
-  { id: 9, startBar: 72, endBar: 80, startTicks: 276480, endTicks: 307200, startTimeSec: 118.867, nextTimeSec: 131.667, durationSec: 12.800 },
-  { id: 10, startBar: 80, endBar: 88, startTicks: 307200, endTicks: 337920, startTimeSec: 131.667, nextTimeSec: 144.467, durationSec: 12.800 },
-  { id: 11, startBar: 88, endBar: 96, startTicks: 337920, endTicks: 368640, startTimeSec: 144.467, nextTimeSec: 157.267, durationSec: 12.800 },
-  { id: 12, startBar: 96, endBar: 104, startTicks: 368640, endTicks: 399360, startTimeSec: 157.267, nextTimeSec: 170.067, durationSec: 12.800 },
-  { id: 13, startBar: 104, endBar: 112, startTicks: 399360, endTicks: 430080, startTimeSec: 170.067, nextTimeSec: 182.867, durationSec: 12.800 }
+  { id: 8, startBar: 65, endBar: 73, startTicks: 249600, endTicks: 280320, startTimeSec: 107.667, nextTimeSec: 120.467, durationSec: 12.800 },
+  { id: 9, startBar: 73, endBar: 81, startTicks: 280320, endTicks: 311040, startTimeSec: 120.467, nextTimeSec: 133.267, durationSec: 12.800 },
+  { id: 10, startBar: 81, endBar: 89, startTicks: 311040, endTicks: 341760, startTimeSec: 133.267, nextTimeSec: 146.067, durationSec: 12.800 },
+  { id: 11, startBar: 89, endBar: 97, startTicks: 341760, endTicks: 372480, startTimeSec: 146.067, nextTimeSec: 158.867, durationSec: 12.800 },
+  { id: 12, startBar: 97, endBar: 105, startTicks: 372480, endTicks: 403200, startTimeSec: 158.867, nextTimeSec: 171.667, durationSec: 12.800 },
+  { id: 13, startBar: 105, endBar: 113, startTicks: 403200, endTicks: 433920, startTimeSec: 171.667, nextTimeSec: 184.467, durationSec: 12.800 }
 ];
 
 const QUIET_BLOCKS = [
