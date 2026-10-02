@@ -19,36 +19,26 @@ let introHasPlayed = false;
 export let currentBlockDurationSec = 13.333;
 export let currentBlockStartTransportSec = 0;
 
-// 2. Block Roadmap Definitions (in measure units and tick ranges)
-// INTRO_BLOCK combines the 9-bar intro fanfare and the first 8-bar main theme statement (Bars 0–17, ticks 0..65280)
-const INTRO_BLOCK = { id: 0, startBar: 0, endBar: 17, startTicks: 0, endTicks: 65280, startTimeSec: 0.000, nextTimeSec: 30.867, durationSec: 30.867 };
-
-// Random Exploration cues loop across Blocks 2 through 7 (Bars 17–65, 8 measures each)
-const EXPLORATION_BLOCKS = [
-  { id: 2, startBar: 17, endBar: 25, startTicks: 65280, endTicks: 96000, startTimeSec: 30.867, nextTimeSec: 43.667, durationSec: 12.800 },
-  { id: 3, startBar: 25, endBar: 33, startTicks: 96000, endTicks: 126720, startTimeSec: 43.667, nextTimeSec: 56.467, durationSec: 12.800 },
-  { id: 4, startBar: 33, endBar: 41, startTicks: 126720, endTicks: 157440, startTimeSec: 56.467, nextTimeSec: 69.267, durationSec: 12.800 },
-  { id: 5, startBar: 41, endBar: 49, startTicks: 157440, endTicks: 188160, startTimeSec: 69.267, nextTimeSec: 82.067, durationSec: 12.800 },
-  { id: 6, startBar: 49, endBar: 57, startTicks: 188160, endTicks: 218880, startTimeSec: 82.067, nextTimeSec: 94.867, durationSec: 12.800 },
-  { id: 7, startBar: 57, endBar: 65, startTicks: 218880, endTicks: 249600, startTimeSec: 94.867, nextTimeSec: 107.667, durationSec: 12.800 }
-];
-
-const BATTLE_BLOCKS = [
-  { id: 8, startBar: 64, endBar: 72, startTicks: 245760, endTicks: 276480, startTimeSec: 106.067, nextTimeSec: 118.867, durationSec: 12.800 },
-  { id: 9, startBar: 72, endBar: 80, startTicks: 276480, endTicks: 307200, startTimeSec: 118.867, nextTimeSec: 131.667, durationSec: 12.800 },
-  { id: 10, startBar: 80, endBar: 88, startTicks: 307200, endTicks: 337920, startTimeSec: 131.667, nextTimeSec: 144.467, durationSec: 12.800 },
-  { id: 11, startBar: 88, endBar: 96, startTicks: 337920, endTicks: 368640, startTimeSec: 144.467, nextTimeSec: 157.267, durationSec: 12.800 },
-  { id: 12, startBar: 96, endBar: 104, startTicks: 368640, endTicks: 399360, startTimeSec: 157.267, nextTimeSec: 170.067, durationSec: 12.800 },
-  { id: 13, startBar: 104, endBar: 112, startTicks: 399360, endTicks: 430080, startTimeSec: 170.067, nextTimeSec: 182.867, durationSec: 12.800 }
-];
-
-const QUIET_BLOCKS = [
-  { id: 18, startBar: 137, endBar: 145, startTicks: 526080, endTicks: 556800, startTimeSec: 222.867, nextTimeSec: 236.582, durationSec: 13.714 },
-  { id: 19, startBar: 145, endBar: 153, startTicks: 556800, endTicks: 587520, startTimeSec: 236.582, nextTimeSec: 250.804, durationSec: 14.222 },
-  { id: 20, startBar: 153, endBar: 161, startTicks: 587520, endTicks: 618240, startTimeSec: 250.804, nextTimeSec: 264.518, durationSec: 13.714 },
-  { id: 21, startBar: 161, endBar: 169, startTicks: 618240, endTicks: 648960, startTimeSec: 264.518, nextTimeSec: 278.232, durationSec: 13.714 },
-  { id: 22, startBar: 169, endBar: 177, startTicks: 648960, endTicks: 679680, startTimeSec: 278.232, nextTimeSec: 291.032, durationSec: 12.800 }
-];
+// 2. Chunks Calibration Mapping (blockMap)
+const blockMap = {
+  EXPLORATION: [
+    { start: 18.07,  end: 30.87,  tempo: 150 }, // Day Chunk 1
+    { start: 30.87,  end: 43.67,  tempo: 150 }, // Day Chunk 2
+    { start: 43.67,  end: 56.47,  tempo: 150 }, // Day Chunk 3
+    { start: 56.47,  end: 69.27,  tempo: 150 }, // Day Chunk 4
+    { start: 69.27,  end: 82.07,  tempo: 150 }, // Day Chunk 5
+    { start: 82.07,  end: 94.87,  tempo: 150 }  // Day Chunk 6
+  ],
+  BATTLE: [
+    { start: 236.58, end: 250.80, tempo: 135 }, // Combat Loop Chunk 1
+    { start: 250.80, end: 265.02, tempo: 135 }  // Combat Loop Chunk 2
+  ],
+  QUIET: [
+    { start: 278.23, end: 297.43, tempo: 150 }  // Night Ambient Base Chunks
+  ],
+  BATTLE_INTRO: { start: 222.87, end: 236.58, tempo: 140 }, // The skipped "1st battle cue"
+  BATTLE_OUTRO: { start: 265.02, end: 278.23, tempo: 150 }  // The skipped "final battle cue"
+};
 
 // Helper to convert MIDI pitch number to note name (e.g. 60 -> "C4")
 function midiToNoteName(midi) {
@@ -71,13 +61,12 @@ function buildSamplerUrls(filterFn) {
   return urls;
 }
 
-// 3. Master Audio Output Pipeline
+// 3. Master Audio Output Pipeline & Segregated Volume Nodes
 let masterLimiter;
 let masterReverb;
-let rackA = null;
-let rackB = null;
-let activeRack = null;
-let inactiveRack = null;
+let melodyVolumeNode = null;
+let percussionVolumeNode = null;
+let soundRack = null;
 let engineInitialized = false;
 let initPromise = null;
 
@@ -86,6 +75,10 @@ async function detectAndInitAudioEngine() {
 
   masterLimiter = new Tone.Limiter(-1).toDestination();
   masterReverb = new Tone.Reverb({ decay: 2.2, wet: 0.2 }).connect(masterLimiter);
+
+  // Initialize segregated volume nodes connected to masterReverb
+  melodyVolumeNode = new Tone.Volume(0).connect(masterReverb);
+  percussionVolumeNode = new Tone.Volume(0).connect(masterReverb);
 
   const envBase = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) || './';
   const cleanBase = envBase.endsWith('/') ? envBase : envBase + '/';
@@ -162,13 +155,14 @@ async function detectAndInitAudioEngine() {
   }
 
   function createSoundfontRack(baseUrl) {
-    const volumeNode = new Tone.Volume(0).connect(masterReverb);
     const samplers = {};
 
     for (const [instKey, spec] of Object.entries(sampleSpecs)) {
       const urls = sampleUrlMaps[instKey];
       if (Object.keys(urls).length > 0) {
-        const sampler = new Tone.Sampler({ urls, baseUrl }).connect(volumeNode);
+        const isPerc = instKey === 'snare' || instKey === 'tom';
+        const destNode = isPerc ? percussionVolumeNode : melodyVolumeNode;
+        const sampler = new Tone.Sampler({ urls, baseUrl }).connect(destNode);
         sampler.volume.value = spec.defaultVol;
         samplers[instKey] = sampler;
       }
@@ -177,13 +171,13 @@ async function detectAndInitAudioEngine() {
     // Fallback synths for percussive elements without soundfont samples (kick, hi-hat)
     const kickSynth = new Tone.MembraneSynth({
       pitchDecay: 0.05, octaves: 4, oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay: 0.2, sustain: 0, release: 0.1 }
-    }).connect(masterLimiter);
+    }).connect(percussionVolumeNode);
     kickSynth.volume.value = -6;
 
     const hihatSynth = new Tone.MetalSynth({
       frequency: 200, envelope: { attack: 0.001, decay: 0.05, release: 0.05 },
       harmonicity: 5.1, modulationIndex: 32, resonance: 4000, octaves: 1.5
-    }).connect(masterLimiter);
+    }).connect(percussionVolumeNode);
     hihatSynth.volume.value = -22;
 
     function releaseAll() {
@@ -193,7 +187,6 @@ async function detectAndInitAudioEngine() {
     }
 
     return {
-      volumeNode,
       samplers,
       kickSynth,
       hihatSynth,
@@ -201,12 +194,7 @@ async function detectAndInitAudioEngine() {
     };
   }
 
-  rackA = createSoundfontRack(soundfontBaseUrl);
-  rackB = createSoundfontRack(soundfontBaseUrl);
-  rackB.volumeNode.volume.value = -Infinity; // rackB muted initially
-
-  activeRack = rackA;
-  inactiveRack = rackB;
+  soundRack = createSoundfontRack(soundfontBaseUrl);
 
   engineInitialized = true;
 }
@@ -218,7 +206,7 @@ function getInstrumentKeyForTrack(trackIndex) {
   if (!tr) return 'piano';
 
   const channel = tr.channel;
-  if (channel === 9) return 'percussion';
+  if (channel === 9 || (tr.instrument && tr.instrument.family === 'drums')) return 'percussion';
 
   const instNumber = tr.instrument ? tr.instrument.number : 0;
   const instName = (tr.instrument ? tr.instrument.name : '').toLowerCase();
@@ -266,11 +254,12 @@ function getInstrumentKeyForTrack(trackIndex) {
 function getSamplerForTrack(rack, trackIndex) {
   const key = getInstrumentKeyForTrack(trackIndex);
   if (key === 'percussion') return 'percussion';
-  return rack.samplers[key] || rack.samplers.piano;
+  return rack ? (rack.samplers[key] || rack.samplers.piano) : null;
 }
 
 // Helper to trigger note on sampler / synth safely without throwing if buffer is unready
 function triggerSafeNote(rack, sampler, note, durationSec, time) {
+  if (!rack) return;
   const now = Tone.now();
   let safeTime = Math.max(time, now);
 
@@ -315,71 +304,130 @@ function triggerSafeNote(rack, sampler, note, durationSec, time) {
 // 4. Scheduling & Dynamic Conductor Engine
 let conductorScheduleId = null;
 
-function selectNextBlock(state) {
-  if (state === 'EXPLORATION') {
-    if (!introHasPlayed) {
-      introHasPlayed = true;
-      currentExplorationBlockIndex = 0;
-      return INTRO_BLOCK;
-    }
-    let available = EXPLORATION_BLOCKS.filter(b => b.id !== currentExplorationBlockIndex);
-    if (available.length === 0) available = EXPLORATION_BLOCKS;
-    const chosen = available[Math.floor(Math.random() * available.length)];
-    currentExplorationBlockIndex = chosen.id;
-    return chosen;
-  } else if (state === 'BATTLE') {
-    const chosen = BATTLE_BLOCKS[currentBattleBlockIndex % BATTLE_BLOCKS.length];
-    currentBattleBlockIndex++;
-    return chosen;
-  } else if (state === 'QUIET') {
-    const chosen = QUIET_BLOCKS[Math.floor(Math.random() * QUIET_BLOCKS.length)];
-    return chosen;
-  }
-
-  return INTRO_BLOCK;
-}
-
-function scheduleBlockChain(startTransportSec) {
+function scheduleMidiBlock(block, startTransportSec) {
   const transport = Tone.getTransport();
+  if (!midiData || !midiData.tracks) return 0;
 
-  currentPlaybackState = nextPlaybackState;
-  const chosenBlock = selectNextBlock(currentPlaybackState);
-
+  const durationSec = block.end - block.start;
   currentBlockStartTransportSec = startTransportSec;
-  currentBlockDurationSec = chosenBlock.durationSec;
-
-  const currentRack = activeRack;
-  if (!currentRack || !midiData || !midiData.tracks) return;
+  currentBlockDurationSec = durationSec;
 
   midiData.tracks.forEach((track, trIdx) => {
-    const sampler = getSamplerForTrack(currentRack, trIdx);
+    const isPercussion = track.channel === 9 || (track.instrument && track.instrument.family === 'drums');
+    const sampler = getSamplerForTrack(soundRack, trIdx);
 
+    // Direct Second Filtering based on block.start and block.end
     const notesInBlock = track.notes.filter(n =>
-      n.ticks >= chosenBlock.startTicks && n.ticks < chosenBlock.endTicks
+      n.time >= block.start && n.time < block.end
     );
 
     notesInBlock.forEach((note) => {
-      const relativeNoteTimeSec = note.time - chosenBlock.startTimeSec;
+      const relativeNoteTimeSec = note.time - block.start;
       const noteTransportSec = startTransportSec + relativeNoteTimeSec;
       const exactDurationSec = note.duration;
 
       const eventId = transport.schedule((scheduledTime) => {
-        triggerSafeNote(currentRack, sampler, note, exactDurationSec, scheduledTime);
+        triggerSafeNote(soundRack, sampler, note, exactDurationSec, scheduledTime);
       }, noteTransportSec);
 
       activeScheduledEvents.push(eventId);
     });
   });
 
-  const nextScheduledBlockTransportSec = startTransportSec + chosenBlock.durationSec;
+  return durationSec;
+}
 
-  // Pre-schedule next block calculation slightly ahead of boundary (0.2s before transition time)
-  // to prevent audio engine thread latency or garbage collection pauses at the boundary
+function scheduleNextBlockChain(startTransportSec) {
+  const transport = Tone.getTransport();
+  let chosenBlock = null;
+
+  if (currentPlaybackState === 'BATTLE_INTRO') {
+    // Intro flourish complete -> snap grid tracking and transition into BATTLE loop
+    currentPlaybackState = 'BATTLE';
+    try {
+      transport.position = "0:0:0";
+    } catch (e) {
+      // ignore
+    }
+    if (melodyVolumeNode) {
+      melodyVolumeNode.volume.rampTo(-6, 0.1, Tone.now());
+    }
+    const battleChunks = blockMap.BATTLE;
+    chosenBlock = battleChunks[currentBattleBlockIndex % battleChunks.length];
+    currentBattleBlockIndex++;
+  } else if (currentPlaybackState === 'BATTLE') {
+    if (nextPlaybackState !== 'BATTLE') {
+      // User requested exiting battle -> play BATTLE_OUTRO (Victory Flourish) first
+      currentPlaybackState = 'BATTLE_OUTRO';
+      chosenBlock = blockMap.BATTLE_OUTRO;
+      if (melodyVolumeNode) {
+        melodyVolumeNode.volume.rampTo(0, 0.1, Tone.now());
+      }
+    } else {
+      // Continue repeating main battle loop
+      const battleChunks = blockMap.BATTLE;
+      chosenBlock = battleChunks[currentBattleBlockIndex % battleChunks.length];
+      currentBattleBlockIndex++;
+      if (melodyVolumeNode) {
+        melodyVolumeNode.volume.rampTo(-6, 0.1, Tone.now());
+      }
+    }
+  } else if (currentPlaybackState === 'BATTLE_OUTRO') {
+    // Victory flourish completed -> resolve directly to user's selected nextPlaybackState
+    currentPlaybackState = nextPlaybackState;
+    if (currentPlaybackState === 'QUIET') {
+      const quietChunks = blockMap.QUIET;
+      chosenBlock = quietChunks[Math.floor(Math.random() * quietChunks.length)];
+    } else {
+      currentPlaybackState = 'EXPLORATION';
+      const explorationChunks = blockMap.EXPLORATION;
+      let availableIndices = explorationChunks
+        .map((_, i) => i)
+        .filter(i => i !== currentExplorationBlockIndex);
+      if (availableIndices.length === 0) availableIndices = [0];
+      const chosenIdx = availableIndices[Math.floor(Math.random() * availableIndices.length)];
+      currentExplorationBlockIndex = chosenIdx;
+      chosenBlock = explorationChunks[chosenIdx];
+    }
+    if (melodyVolumeNode) {
+      melodyVolumeNode.volume.rampTo(0, 0.1, Tone.now());
+    }
+  } else if (currentPlaybackState === 'QUIET') {
+    if (nextPlaybackState !== 'QUIET') {
+      currentPlaybackState = nextPlaybackState;
+      return scheduleNextBlockChain(startTransportSec);
+    }
+    const quietChunks = blockMap.QUIET;
+    chosenBlock = quietChunks[Math.floor(Math.random() * quietChunks.length)];
+    if (melodyVolumeNode) {
+      melodyVolumeNode.volume.rampTo(0, 0.1, Tone.now());
+    }
+  } else { // EXPLORATION
+    if (nextPlaybackState !== 'EXPLORATION') {
+      currentPlaybackState = nextPlaybackState;
+      return scheduleNextBlockChain(startTransportSec);
+    }
+    const explorationChunks = blockMap.EXPLORATION;
+    let availableIndices = explorationChunks
+      .map((_, i) => i)
+      .filter(i => i !== currentExplorationBlockIndex);
+    if (availableIndices.length === 0) availableIndices = [0];
+    const chosenIdx = availableIndices[Math.floor(Math.random() * availableIndices.length)];
+    currentExplorationBlockIndex = chosenIdx;
+    chosenBlock = explorationChunks[chosenIdx];
+    if (melodyVolumeNode) {
+      melodyVolumeNode.volume.rampTo(0, 0.1, Tone.now());
+    }
+  }
+
+  const durationSec = scheduleMidiBlock(chosenBlock, startTransportSec);
+  const nextScheduledBlockTransportSec = startTransportSec + durationSec;
+
   const leadTimeSec = 0.2;
   const scheduleTriggerSec = Math.max(startTransportSec, nextScheduledBlockTransportSec - leadTimeSec);
 
   conductorScheduleId = transport.schedule((scheduledTime) => {
-    scheduleBlockChain(nextScheduledBlockTransportSec);
+    scheduleNextBlockChain(nextScheduledBlockTransportSec);
   }, scheduleTriggerSec);
 }
 
@@ -422,7 +470,23 @@ export async function changeGameMode(newMode) {
     currentPlaybackState = newMode;
     nextPlaybackState = newMode;
 
-    scheduleBlockChain(0);
+    if (newMode === 'BATTLE') {
+      currentPlaybackState = 'BATTLE_INTRO';
+      nextPlaybackState = 'BATTLE';
+      if (melodyVolumeNode) {
+        melodyVolumeNode.volume.setValueAtTime(-Infinity, Tone.now());
+      }
+      const introBlock = blockMap.BATTLE_INTRO;
+      const durationSec = scheduleMidiBlock(introBlock, 0);
+      const nextScheduledBlockTransportSec = durationSec;
+      const leadTimeSec = 0.2;
+      const scheduleTriggerSec = Math.max(0, nextScheduledBlockTransportSec - leadTimeSec);
+      conductorScheduleId = transport.schedule((scheduledTime) => {
+        scheduleNextBlockChain(nextScheduledBlockTransportSec);
+      }, scheduleTriggerSec);
+    } else {
+      scheduleNextBlockChain(0);
+    }
     transport.start();
     return;
   }
@@ -439,6 +503,12 @@ export async function changeGameMode(newMode) {
 function triggerImmediateBattleOverride() {
   const transport = Tone.getTransport();
 
+  // 1. Mute Melodies Instantly: sharp linear/envelope ramp on melody node
+  if (melodyVolumeNode) {
+    melodyVolumeNode.volume.rampTo(-Infinity, 0.04, Tone.now());
+  }
+
+  // 2. Clear Pending Timeline Events
   activeScheduledEvents.forEach(eventId => transport.clear(eventId));
   activeScheduledEvents = [];
 
@@ -447,68 +517,29 @@ function triggerImmediateBattleOverride() {
     conductorScheduleId = null;
   }
 
-  currentPlaybackState = 'BATTLE';
+  currentPlaybackState = 'BATTLE_INTRO';
   nextPlaybackState = 'BATTLE';
 
-  const outgoingRack = activeRack;
-  const incomingRack = inactiveRack;
+  // 3. Quantize the Battle Entry: Calculate nearest upcoming quarter beat milestone
+  const quarterBeatSec = 60 / (transport.bpm ? (transport.bpm.value || 150) : 150);
+  const currentSec = transport.seconds;
 
-  activeRack = incomingRack;
-  inactiveRack = outgoingRack;
-
-  if (outgoingRack && outgoingRack.volumeNode) {
-    outgoingRack.volumeNode.volume.cancelScheduledValues(Tone.now());
-    outgoingRack.volumeNode.volume.rampTo(-60, CROSSFADE_TIME);
+  let nextBeat;
+  if (typeof transport.quantizeFormat === 'function') {
+    nextBeat = transport.quantizeFormat('4n');
+  } else {
+    nextBeat = Math.ceil((currentSec + 0.01) / quarterBeatSec) * quarterBeatSec;
   }
 
-  if (incomingRack && incomingRack.volumeNode) {
-    incomingRack.volumeNode.volume.cancelScheduledValues(Tone.now());
-    incomingRack.volumeNode.volume.setValueAtTime(-60, Tone.now());
-    incomingRack.volumeNode.volume.rampTo(0, CROSSFADE_TIME);
-  }
+  // 4. Fire the Intro Flourish (BATTLE_INTRO chunk)
+  const introBlock = blockMap.BATTLE_INTRO;
+  const durationSec = scheduleMidiBlock(introBlock, nextBeat);
 
-  setTimeout(() => {
-    if (outgoingRack && typeof outgoingRack.releaseAll === 'function') {
-      outgoingRack.releaseAll();
-    }
-  }, CROSSFADE_TIME * 1000);
+  const nextScheduledBlockTransportSec = nextBeat + durationSec;
+  const leadTimeSec = 0.2;
+  const scheduleTriggerSec = Math.max(nextBeat, nextScheduledBlockTransportSec - leadTimeSec);
 
-  const transportSeconds = transport.seconds;
-  const elapsedInBlock = Math.max(0, transportSeconds - currentBlockStartTransportSec);
-  const currentOffsetInBlock = elapsedInBlock % currentBlockDurationSec;
-
-  currentBattleBlockIndex = 1; // Battle Block 2 (Bars 72..80)
-  const battleBlock = BATTLE_BLOCKS[1];
-
-  currentBlockStartTransportSec = transportSeconds - currentOffsetInBlock;
-  currentBlockDurationSec = battleBlock.durationSec;
-
-  if (midiData && midiData.tracks) {
-    midiData.tracks.forEach((track, trIdx) => {
-      const sampler = getSamplerForTrack(incomingRack, trIdx);
-
-      const notesInBlock = track.notes.filter(n =>
-        n.ticks >= battleBlock.startTicks && n.ticks < battleBlock.endTicks
-      );
-
-      notesInBlock.forEach((note) => {
-        const relativeNoteTimeSec = note.time - battleBlock.startTimeSec;
-        if (relativeNoteTimeSec >= currentOffsetInBlock) {
-          const noteTransportSec = currentBlockStartTransportSec + relativeNoteTimeSec;
-          const exactDurationSec = note.duration;
-
-          const eventId = transport.schedule((scheduledTime) => {
-            triggerSafeNote(incomingRack, sampler, note, exactDurationSec, scheduledTime);
-          }, noteTransportSec);
-
-          activeScheduledEvents.push(eventId);
-        }
-      });
-    });
-  }
-
-  const nextScheduledBlockTransportSec = currentBlockStartTransportSec + battleBlock.durationSec;
   conductorScheduleId = transport.schedule((scheduledTime) => {
-    scheduleBlockChain(nextScheduledBlockTransportSec);
-  }, nextScheduledBlockTransportSec);
+    scheduleNextBlockChain(nextScheduledBlockTransportSec);
+  }, scheduleTriggerSec);
 }

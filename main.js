@@ -63,6 +63,14 @@ document.addEventListener('DOMContentLoaded', () => {
         displayEl.innerText = "Quiet (Night/Rest)";
         displayEl.className = "status-value mode-quiet";
         fillEl.style.backgroundColor = "var(--accent-blue)";
+      } else if (currentPlaybackState === 'BATTLE_INTRO') {
+        displayEl.innerText = "⚠️ COMBAT INTRO";
+        displayEl.className = "status-value mode-battle";
+        fillEl.style.backgroundColor = "var(--accent-red)";
+      } else if (currentPlaybackState === 'BATTLE_OUTRO') {
+        displayEl.innerText = "⚔️ VICTORY FLOURISH";
+        displayEl.className = "status-value mode-battle";
+        fillEl.style.backgroundColor = "var(--accent-red)";
       } else if (currentPlaybackState === 'BATTLE') {
         displayEl.innerText = "⚠️ COMBAT ENGAGED";
         displayEl.className = "status-value mode-battle";
