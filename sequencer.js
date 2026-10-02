@@ -19,11 +19,9 @@ let introHasPlayed = false;
 export let currentBlockDurationSec = 13.333;
 export let currentBlockStartTransportSec = 0;
 
-// 2. Block Roadmap Definitions (in measure units and tick ranges)
-// INTRO_BLOCK combines the 9-bar intro fanfare and the first 8-bar main theme statement (Bars 0–17, ticks 0..65280)
+// 2. Block Roadmap Definitions & Map Container
 const INTRO_BLOCK = { id: 0, startBar: 0, endBar: 17, startTicks: 0, endTicks: 65280, startTimeSec: 0.000, nextTimeSec: 30.867, durationSec: 30.867 };
 
-// Random Exploration cues loop across Blocks 2 through 7 (Bars 17–65, 8 measures each)
 const EXPLORATION_BLOCKS = [
   { id: 2, startBar: 17, endBar: 25, startTicks: 65280, endTicks: 96000, startTimeSec: 30.867, nextTimeSec: 43.667, durationSec: 12.800 },
   { id: 3, startBar: 25, endBar: 33, startTicks: 96000, endTicks: 126720, startTimeSec: 43.667, nextTimeSec: 56.467, durationSec: 12.800 },
@@ -49,6 +47,13 @@ const QUIET_BLOCKS = [
   { id: 21, startBar: 161, endBar: 169, startTicks: 618240, endTicks: 648960, startTimeSec: 264.518, nextTimeSec: 278.232, durationSec: 13.714 },
   { id: 22, startBar: 169, endBar: 177, startTicks: 648960, endTicks: 679680, startTimeSec: 278.232, nextTimeSec: 291.032, durationSec: 12.800 }
 ];
+
+const blockMap = {
+  INTRO: INTRO_BLOCK,
+  EXPLORATION: EXPLORATION_BLOCKS,
+  BATTLE: BATTLE_BLOCKS,
+  QUIET: QUIET_BLOCKS
+};
 
 // Helper to convert MIDI pitch number to note name (e.g. 60 -> "C4")
 function midiToNoteName(midi) {
@@ -312,44 +317,64 @@ function triggerSafeNote(rack, sampler, note, durationSec, time) {
   }
 }
 
-// 4. Scheduling & Dynamic Conductor Engine
+// 4. Scheduling & Dynamic Conductor Engine using managed Tone.Part
 let conductorScheduleId = null;
 
+// Global Tone.Part instance to hold active block note events
+const musicalBlockPart = new Tone.Part((time, noteEvent) => {
+  const rack = activeRack;
+  if (!rack) return;
+  triggerSafeNote(rack, noteEvent.sampler, noteEvent.note, noteEvent.duration, time);
+}, []).start(0);
+
 function selectNextBlock(state) {
-  if (state === 'EXPLORATION') {
-    if (!introHasPlayed) {
-      introHasPlayed = true;
-      currentExplorationBlockIndex = 0;
-      return INTRO_BLOCK;
-    }
-    let available = EXPLORATION_BLOCKS.filter(b => b.id !== currentExplorationBlockIndex);
-    if (available.length === 0) available = EXPLORATION_BLOCKS;
-    const chosen = available[Math.floor(Math.random() * available.length)];
-    currentExplorationBlockIndex = chosen.id;
-    return chosen;
-  } else if (state === 'BATTLE') {
-    const chosen = BATTLE_BLOCKS[currentBattleBlockIndex % BATTLE_BLOCKS.length];
-    currentBattleBlockIndex++;
-    return chosen;
-  } else if (state === 'QUIET') {
-    const chosen = QUIET_BLOCKS[Math.floor(Math.random() * QUIET_BLOCKS.length)];
-    return chosen;
+  const pool = blockMap[state];
+  if (!pool) return INTRO_BLOCK;
+
+  if (state === 'INTRO') {
+    return INTRO_BLOCK;
   }
 
-  return INTRO_BLOCK;
+  if (Array.isArray(pool)) {
+    if (state === 'EXPLORATION') {
+      let available = pool.filter(b => b.id !== currentExplorationBlockIndex);
+      if (available.length === 0) available = pool;
+      const chosen = available[Math.floor(Math.random() * available.length)];
+      currentExplorationBlockIndex = chosen.id;
+      return chosen;
+    } else if (state === 'BATTLE') {
+      const chosen = pool[currentBattleBlockIndex % pool.length];
+      currentBattleBlockIndex++;
+      return chosen;
+    } else if (state === 'QUIET') {
+      return pool[Math.floor(Math.random() * pool.length)];
+    }
+  }
+
+  return pool;
 }
 
-function scheduleBlockChain(startTransportSec) {
-  const transport = Tone.getTransport();
+function scheduleMidiBlock(state, startTime) {
+  // 1. Clear out all notes currently remaining in the part container
+  musicalBlockPart.clear();
 
-  currentPlaybackState = nextPlaybackState;
-  const chosenBlock = selectNextBlock(currentPlaybackState);
+  // Determine state transition if intro has played
+  if (state === 'INTRO' && introHasPlayed) {
+    state = nextPlaybackState !== 'INTRO' ? nextPlaybackState : 'EXPLORATION';
+  }
 
-  currentBlockStartTransportSec = startTransportSec;
+  currentPlaybackState = state;
+  if (state === 'INTRO') {
+    introHasPlayed = true;
+  }
+
+  const chosenBlock = selectNextBlock(state);
+
+  currentBlockStartTransportSec = startTime;
   currentBlockDurationSec = chosenBlock.durationSec;
 
   const currentRack = activeRack;
-  if (!currentRack || !midiData || !midiData.tracks) return;
+  if (!currentRack || !midiData || !midiData.tracks) return chosenBlock;
 
   midiData.tracks.forEach((track, trIdx) => {
     const sampler = getSamplerForTrack(currentRack, trIdx);
@@ -360,23 +385,37 @@ function scheduleBlockChain(startTransportSec) {
 
     notesInBlock.forEach((note) => {
       const relativeNoteTimeSec = note.time - chosenBlock.startTimeSec;
-      const noteTransportSec = startTransportSec + relativeNoteTimeSec;
-      const exactDurationSec = note.duration;
+      const absNoteTimeSec = startTime + relativeNoteTimeSec;
 
-      const eventId = transport.schedule((scheduledTime) => {
-        triggerSafeNote(currentRack, sampler, note, exactDurationSec, scheduledTime);
-      }, noteTransportSec);
-
-      activeScheduledEvents.push(eventId);
+      // 2. Add the note into the Part using relative transport timestamp offset
+      musicalBlockPart.add(absNoteTimeSec, {
+        note: note,
+        duration: note.duration,
+        sampler: sampler
+      });
     });
   });
 
-  const nextScheduledBlockTransportSec = startTransportSec + chosenBlock.durationSec;
+  return chosenBlock;
+}
 
-  // Pre-schedule next block calculation slightly ahead of boundary (0.2s before transition time)
-  // to prevent audio engine thread latency or garbage collection pauses at the boundary
+function scheduleBlockChain(startTransportSec) {
+  const transport = Tone.getTransport();
+
+  let stateToSchedule = nextPlaybackState;
+  if (!introHasPlayed) {
+    stateToSchedule = 'INTRO';
+  }
+
+  const chosenBlock = scheduleMidiBlock(stateToSchedule, startTransportSec);
+
+  const nextScheduledBlockTransportSec = startTransportSec + chosenBlock.durationSec;
   const leadTimeSec = 0.2;
   const scheduleTriggerSec = Math.max(startTransportSec, nextScheduledBlockTransportSec - leadTimeSec);
+
+  if (conductorScheduleId !== null) {
+    transport.clear(conductorScheduleId);
+  }
 
   conductorScheduleId = transport.schedule((scheduledTime) => {
     scheduleBlockChain(nextScheduledBlockTransportSec);
@@ -439,9 +478,6 @@ export async function changeGameMode(newMode) {
 function triggerImmediateBattleOverride() {
   const transport = Tone.getTransport();
 
-  activeScheduledEvents.forEach(eventId => transport.clear(eventId));
-  activeScheduledEvents = [];
-
   if (conductorScheduleId !== null) {
     transport.clear(conductorScheduleId);
     conductorScheduleId = null;
@@ -473,11 +509,14 @@ function triggerImmediateBattleOverride() {
     }
   }, CROSSFADE_TIME * 1000);
 
+  // Clear current part notes to cut former melody immediately without resetting transport position
+  musicalBlockPart.clear();
+
   const transportSeconds = transport.seconds;
   const elapsedInBlock = Math.max(0, transportSeconds - currentBlockStartTransportSec);
   const currentOffsetInBlock = elapsedInBlock % currentBlockDurationSec;
 
-  currentBattleBlockIndex = 1; // Battle Block 2 (Bars 72..80)
+  currentBattleBlockIndex = 1; // Battle Block 2
   const battleBlock = BATTLE_BLOCKS[1];
 
   currentBlockStartTransportSec = transportSeconds - currentOffsetInBlock;
@@ -495,20 +534,22 @@ function triggerImmediateBattleOverride() {
         const relativeNoteTimeSec = note.time - battleBlock.startTimeSec;
         if (relativeNoteTimeSec >= currentOffsetInBlock) {
           const noteTransportSec = currentBlockStartTransportSec + relativeNoteTimeSec;
-          const exactDurationSec = note.duration;
 
-          const eventId = transport.schedule((scheduledTime) => {
-            triggerSafeNote(incomingRack, sampler, note, exactDurationSec, scheduledTime);
-          }, noteTransportSec);
-
-          activeScheduledEvents.push(eventId);
+          musicalBlockPart.add(noteTransportSec, {
+            note: note,
+            duration: note.duration,
+            sampler: sampler
+          });
         }
       });
     });
   }
 
   const nextScheduledBlockTransportSec = currentBlockStartTransportSec + battleBlock.durationSec;
+  const leadTimeSec = 0.2;
+  const scheduleTriggerSec = Math.max(transportSeconds, nextScheduledBlockTransportSec - leadTimeSec);
+
   conductorScheduleId = transport.schedule((scheduledTime) => {
     scheduleBlockChain(nextScheduledBlockTransportSec);
-  }, nextScheduledBlockTransportSec);
+  }, scheduleTriggerSec);
 }
