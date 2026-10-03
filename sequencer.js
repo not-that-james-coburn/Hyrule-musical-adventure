@@ -19,32 +19,24 @@ let introHasPlayed = false;
 export let currentBlockDurationSec = 13.333;
 export let currentBlockStartTransportSec = 0;
 
-// 2. Chunks Calibration Mapping (blockMap)
+// 2. Absolute Measure-Based Calibration Mapping (blockMap)
 const blockMap = {
-  INTRO: { start: 0.00, end: 12.80 },          // Measures 1 - 8 (The Sunrise Intro)
-
-  // The Adventure/Day loop pool spans 6 consecutive 8-bar cues starting at 12.80s
+  INTRO: { startBar: 0, endBar: 4 },           // 4-Bar Dawn Introduction Cues
   EXPLORATION: [
-    { start: 12.80,  end: 25.60 },             // Exploration Cue 1
-    { start: 25.60,  end: 38.40 },             // Exploration Cue 2
-    { start: 38.40,  end: 51.20 },             // Exploration Cue 3
-    { start: 51.20,  end: 64.00 },             // Exploration Cue 4
-    { start: 64.00,  end: 76.80 },             // Exploration Cue 5
-    { start: 76.80,  end: 89.60 }              // Exploration Cue 6
+    { startBar: 4,  endBar: 12 },              // Exploration Block 1
+    { startBar: 12, endBar: 20 },              // Exploration Block 2
+    { startBar: 20, endBar: 28 },              // Exploration Block 3
+    { startBar: 28, endBar: 36 }               // Exploration Block 4
   ],
-
-  // The true combat tracks follow immediately after the exploration blocks in the suite
-  BATTLE_INTRO: { start: 89.60, end: 102.40 },   // The urgent 1st Battle Hit Flourish
+  BATTLE_INTRO: { startBar: 36, endBar: 38 },  // 2-Bar Sudden Combat Fanfare Hit
   BATTLE: [
-    { start: 102.40, end: 115.20 },            // Battle Loop Cue 1
-    { start: 115.20, end: 128.00 }             // Battle Loop Cue 2
+    { startBar: 38, endBar: 46 },              // Combat Aggressive Loop 1
+    { startBar: 46, endBar: 54 }               // Combat Aggressive Loop 2
   ],
-  BATTLE_OUTRO: { start: 128.00, end: 140.80 },  // Battle End / Heroic Victory Flourish
-
-  // The Quiet/Standstill ambient cues reside at the tail end of the SC-88 arrangement
+  BATTLE_OUTRO: { startBar: 54, endBar: 58 },  // 4-Bar Victory Flourish
   QUIET: [
-    { start: 140.80, end: 153.60 },            // Quiet Loop Cue 1
-    { start: 153.60, end: 166.40 }             // Quiet Loop Cue 2
+    { startBar: 58, endBar: 66 },              // Rest Ambient Loop 1
+    { startBar: 66, endBar: 74 }               // Rest Ambient Loop 2
   ]
 };
 
@@ -359,10 +351,45 @@ function selectBlockForState(state) {
   return blockMap.INTRO;
 }
 
+function tickToSeconds(targetTick) {
+  if (!midiData || !midiData.header || !midiData.header.tempos) {
+    const bpm = 150;
+    return (targetTick / (PPQ * (bpm / 60)));
+  }
+
+  const sortedTempos = [...midiData.header.tempos].sort((a, b) => a.ticks - b.ticks);
+
+  let currentTime = 0.0;
+  let currentTick = 0;
+  let currentBpm = sortedTempos.length > 0 ? sortedTempos[0].bpm : 150;
+
+  for (const t of sortedTempos) {
+    if (t.ticks >= targetTick) break;
+    const deltaTicks = t.ticks - currentTick;
+    const secondsPerTick = (60.0 / currentBpm) / PPQ;
+    currentTime += deltaTicks * secondsPerTick;
+    currentTick = t.ticks;
+    currentBpm = t.bpm;
+  }
+
+  const deltaTicks = targetTick - currentTick;
+  const secondsPerTick = (60.0 / currentBpm) / PPQ;
+  currentTime += deltaTicks * secondsPerTick;
+
+  return currentTime;
+}
+
 function scheduleMidiBlock(chosenBlock, startTime) {
   if (!chosenBlock) return 0;
 
-  const durationSec = chosenBlock.end - chosenBlock.start;
+  const ticksPerBar = 4 * PPQ; // 3840
+  const startTicks = chosenBlock.startBar * ticksPerBar;
+  const endTicks = chosenBlock.endBar * ticksPerBar;
+
+  const blockStartSec = tickToSeconds(startTicks);
+  const blockEndSec = tickToSeconds(endTicks);
+  const durationSec = blockEndSec - blockStartSec;
+
   currentBlockStartTransportSec = startTime;
   currentBlockDurationSec = durationSec;
 
@@ -372,11 +399,12 @@ function scheduleMidiBlock(chosenBlock, startTime) {
     const isPercussion = track.channel === 9 || (track.instrument && track.instrument.family === 'drums');
 
     const notesInBlock = track.notes.filter(note =>
-      note.time >= chosenBlock.start && note.time < chosenBlock.end
+      note.ticks >= startTicks && note.ticks < endTicks
     );
 
     notesInBlock.forEach((note) => {
-      const relativeNoteTime = note.time - chosenBlock.start;
+      const noteStartSec = tickToSeconds(note.ticks);
+      const relativeNoteTime = noteStartSec - blockStartSec;
       const noteTime = startTime + relativeNoteTime;
 
       if (musicalBlockPart) {
