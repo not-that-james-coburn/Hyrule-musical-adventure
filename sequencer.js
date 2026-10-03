@@ -21,24 +21,31 @@ export let currentBlockStartTransportSec = 0;
 
 // 2. Chunks Calibration Mapping (blockMap)
 const blockMap = {
-  INTRO: { start: 0, end: 18.07, tempo: 150 },
+  INTRO: { start: 0.00, end: 12.80 },          // Measures 1 - 8 (The Sunrise Intro)
+
+  // The Adventure/Day loop pool spans 6 consecutive 8-bar cues starting at 12.80s
   EXPLORATION: [
-    { start: 18.07,  end: 30.87,  tempo: 150 }, // Day Chunk 1
-    { start: 30.87,  end: 43.67,  tempo: 150 }, // Day Chunk 2
-    { start: 43.67,  end: 56.47,  tempo: 150 }, // Day Chunk 3
-    { start: 56.47,  end: 69.27,  tempo: 150 }, // Day Chunk 4
-    { start: 69.27,  end: 82.07,  tempo: 150 }, // Day Chunk 5
-    { start: 82.07,  end: 94.87,  tempo: 150 }  // Day Chunk 6
+    { start: 12.80,  end: 25.60 },             // Exploration Cue 1
+    { start: 25.60,  end: 38.40 },             // Exploration Cue 2
+    { start: 38.40,  end: 51.20 },             // Exploration Cue 3
+    { start: 51.20,  end: 64.00 },             // Exploration Cue 4
+    { start: 64.00,  end: 76.80 },             // Exploration Cue 5
+    { start: 76.80,  end: 89.60 }              // Exploration Cue 6
   ],
+
+  // The true combat tracks follow immediately after the exploration blocks in the suite
+  BATTLE_INTRO: { start: 89.60, end: 102.40 },   // The urgent 1st Battle Hit Flourish
   BATTLE: [
-    { start: 236.58, end: 250.80, tempo: 135 }, // Combat Loop Chunk 1
-    { start: 250.80, end: 265.02, tempo: 135 }  // Combat Loop Chunk 2
+    { start: 102.40, end: 115.20 },            // Battle Loop Cue 1
+    { start: 115.20, end: 128.00 }             // Battle Loop Cue 2
   ],
+  BATTLE_OUTRO: { start: 128.00, end: 140.80 },  // Battle End / Heroic Victory Flourish
+
+  // The Quiet/Standstill ambient cues reside at the tail end of the SC-88 arrangement
   QUIET: [
-    { start: 278.23, end: 297.43, tempo: 150 }  // Night Ambient Base Chunks
-  ],
-  BATTLE_INTRO: { start: 222.87, end: 236.58, tempo: 140 }, // The skipped "1st battle cue"
-  BATTLE_OUTRO: { start: 265.02, end: 278.23, tempo: 150 }  // The skipped "final battle cue"
+    { start: 140.80, end: 153.60 },            // Quiet Loop Cue 1
+    { start: 153.60, end: 166.40 }             // Quiet Loop Cue 2
+  ]
 };
 
 // Helper to convert MIDI pitch number to note name (e.g. 60 -> "C4")
