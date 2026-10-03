@@ -311,32 +311,49 @@ function triggerSafeNote(rack, sampler, note, durationSec, time) {
 
 // 4. Scheduling & Dynamic Conductor Engine
 let conductorScheduleId = null;
+let explorationCueSequenceIndex = 0; // 0 = Day Chunk 1, then >= 1 randomized
 
-function scheduleMidiBlock(state, startTime) {
-  if (musicalBlockPart) {
-    musicalBlockPart.clear();
+function selectBlockForState(state) {
+  if (state === 'INTRO') {
+    return blockMap.INTRO;
   }
-
-  const pool = blockMap[state];
-  if (!pool) return 0;
-
-  let chosenBlock;
-  if (Array.isArray(pool)) {
-    if (state === 'EXPLORATION') {
+  if (state === 'BATTLE_INTRO') {
+    return blockMap.BATTLE_INTRO;
+  }
+  if (state === 'BATTLE_OUTRO') {
+    return blockMap.BATTLE_OUTRO;
+  }
+  if (state === 'BATTLE') {
+    const battleChunks = blockMap.BATTLE;
+    const chosen = battleChunks[currentBattleBlockIndex % battleChunks.length];
+    currentBattleBlockIndex++;
+    return chosen;
+  }
+  if (state === 'QUIET') {
+    const quietChunks = blockMap.QUIET;
+    return quietChunks[Math.floor(Math.random() * quietChunks.length)];
+  }
+  if (state === 'EXPLORATION') {
+    const pool = blockMap.EXPLORATION;
+    if (explorationCueSequenceIndex === 0) {
+      // First exploration cue after intro MUST be Day Chunk 1 (pool[0])
+      explorationCueSequenceIndex = 1;
+      currentExplorationBlockIndex = 0;
+      return pool[0];
+    } else {
+      // Randomized exploration cues thereafter
       let availableIndices = pool.map((_, i) => i).filter(i => i !== currentExplorationBlockIndex);
       if (availableIndices.length === 0) availableIndices = [0];
       const chosenIdx = availableIndices[Math.floor(Math.random() * availableIndices.length)];
       currentExplorationBlockIndex = chosenIdx;
-      chosenBlock = pool[chosenIdx];
-    } else if (state === 'BATTLE') {
-      chosenBlock = pool[currentBattleBlockIndex % pool.length];
-      currentBattleBlockIndex++;
-    } else {
-      chosenBlock = pool[Math.floor(Math.random() * pool.length)];
+      return pool[chosenIdx];
     }
-  } else {
-    chosenBlock = pool;
   }
+  return blockMap.INTRO;
+}
+
+function scheduleMidiBlock(chosenBlock, startTime) {
+  if (!chosenBlock) return 0;
 
   const durationSec = chosenBlock.end - chosenBlock.start;
   currentBlockStartTransportSec = startTime;
@@ -375,8 +392,9 @@ function scheduleNextBlockChain(startTransportSec) {
   const transport = Tone.getTransport();
 
   if (currentPlaybackState === 'INTRO') {
-    // Intro fanfare finished -> transition cleanly into EXPLORATION
+    // Intro fanfare finished -> transition cleanly into EXPLORATION (starts on Day Chunk 1)
     currentPlaybackState = 'EXPLORATION';
+    explorationCueSequenceIndex = 0;
     if (melodyVolumeNode) {
       melodyVolumeNode.volume.rampTo(0, 0.1, Tone.now());
     }
@@ -396,18 +414,24 @@ function scheduleNextBlockChain(startTransportSec) {
     } else {
       // Continue repeating main battle loop
       if (melodyVolumeNode) {
-        melodyVolumeNode.volume.rampTo(-6, 0.1, Tone.now());
+        melodyVolumeNode.volume.rampTo(0, 0.1, Tone.now());
       }
     }
   } else if (currentPlaybackState === 'BATTLE_OUTRO') {
     // Victory flourish completed -> resolve directly to user's selected nextPlaybackState
     currentPlaybackState = nextPlaybackState;
+    if (currentPlaybackState === 'EXPLORATION') {
+      explorationCueSequenceIndex = 0;
+    }
     if (melodyVolumeNode) {
       melodyVolumeNode.volume.rampTo(0, 0.1, Tone.now());
     }
   } else if (currentPlaybackState === 'QUIET') {
     if (nextPlaybackState !== 'QUIET') {
       currentPlaybackState = nextPlaybackState;
+      if (currentPlaybackState === 'EXPLORATION') {
+        explorationCueSequenceIndex = 0;
+      }
       return scheduleNextBlockChain(startTransportSec);
     }
     if (melodyVolumeNode) {
@@ -416,6 +440,9 @@ function scheduleNextBlockChain(startTransportSec) {
   } else { // EXPLORATION
     if (nextPlaybackState !== 'EXPLORATION') {
       currentPlaybackState = nextPlaybackState;
+      if (currentPlaybackState === 'EXPLORATION') {
+        explorationCueSequenceIndex = 0;
+      }
       return scheduleNextBlockChain(startTransportSec);
     }
     if (melodyVolumeNode) {
@@ -423,7 +450,8 @@ function scheduleNextBlockChain(startTransportSec) {
     }
   }
 
-  const durationSec = scheduleMidiBlock(currentPlaybackState, startTransportSec);
+  const chosenBlock = selectBlockForState(currentPlaybackState);
+  const durationSec = scheduleMidiBlock(chosenBlock, startTransportSec);
   const nextScheduledBlockTransportSec = startTransportSec + durationSec;
 
   const leadTimeSec = 0.2;
@@ -476,7 +504,7 @@ export async function changeGameMode(newMode) {
     if (newMode === 'BATTLE') {
       triggerImmediateBattleOverride();
     } else {
-      const durationSec = scheduleMidiBlock('INTRO', 0);
+      const durationSec = scheduleMidiBlock(blockMap.INTRO, 0);
       const nextScheduledBlockTransportSec = durationSec;
       const leadTimeSec = 0.2;
       const scheduleTriggerSec = Math.max(0, nextScheduledBlockTransportSec - leadTimeSec);
@@ -500,7 +528,7 @@ export async function changeGameMode(newMode) {
 function triggerImmediateBattleOverride() {
   const transport = Tone.getTransport();
 
-  // 1. Mute Melodies Instantly: sharp linear/envelope ramp on melody node
+  // 1. Mute Melodies Instantly over 0.04s window so intro flourish drum components layer cleanly
   if (melodyVolumeNode) {
     melodyVolumeNode.volume.rampTo(-Infinity, 0.04, Tone.now());
   }
@@ -522,7 +550,7 @@ function triggerImmediateBattleOverride() {
   nextPlaybackState = 'BATTLE';
 
   const startSec = transport.seconds;
-  const durationSec = scheduleMidiBlock('BATTLE_INTRO', startSec);
+  const durationSec = scheduleMidiBlock(blockMap.BATTLE_INTRO, startSec);
 
   const nextScheduledBlockTransportSec = startSec + durationSec;
   const leadTimeSec = 0.2;
