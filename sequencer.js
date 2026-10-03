@@ -21,22 +21,35 @@ export let currentBlockStartTransportSec = 0;
 
 // 2. Absolute Measure-Based Calibration Mapping (blockMap)
 const blockMap = {
-  INTRO: { startBar: 0, endBar: 4 },           // 4-Bar Dawn Introduction Cues
+  INTRO: { startBar: 0, endBar: 17 },
+
   EXPLORATION: [
-    { startBar: 4,  endBar: 12 },              // Exploration Block 1
-    { startBar: 12, endBar: 20 },              // Exploration Block 2
-    { startBar: 20, endBar: 28 },              // Exploration Block 3
-    { startBar: 28, endBar: 36 }               // Exploration Block 4
+    { startBar: 17, endBar: 25 },
+    { startBar: 25, endBar: 33 },
+    { startBar: 33, endBar: 41 },
+    { startBar: 41, endBar: 49 },
+    { startBar: 49, endBar: 57 },
+    { startBar: 57, endBar: 65 }
   ],
-  BATTLE_INTRO: { startBar: 36, endBar: 38 },  // 2-Bar Sudden Combat Fanfare Hit
+
+  BATTLE_INTRO: { startBar: 64, endBar: 72 },
+
   BATTLE: [
-    { startBar: 38, endBar: 46 },              // Combat Aggressive Loop 1
-    { startBar: 46, endBar: 54 }               // Combat Aggressive Loop 2
+    { startBar: 72, endBar: 80 },
+    { startBar: 80, endBar: 88 },
+    { startBar: 88, endBar: 96 },
+    { startBar: 96, endBar: 104 },
+    { startBar: 104, endBar: 112 }
   ],
-  BATTLE_OUTRO: { startBar: 54, endBar: 58 },  // 4-Bar Victory Flourish
+
+  BATTLE_OUTRO: { startBar: 112, endBar: 120 },
+
   QUIET: [
-    { startBar: 58, endBar: 66 },              // Rest Ambient Loop 1
-    { startBar: 66, endBar: 74 }               // Rest Ambient Loop 2
+    { startBar: 137, endBar: 145 },
+    { startBar: 145, endBar: 153 },
+    { startBar: 153, endBar: 161 },
+    { startBar: 161, endBar: 169 },
+    { startBar: 169, endBar: 177 }
   ]
 };
 
