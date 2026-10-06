@@ -11,25 +11,34 @@ import {
 } from './sequencer.js';
 
 document.addEventListener('DOMContentLoaded', () => {
-  const buttons = document.querySelectorAll('.pad-btn');
+  const modeButtons = document.querySelectorAll('.pad-btn');
+  const playOverlay = document.getElementById('play-overlay');
+  const startBtn = document.getElementById('start-btn');
+  const startBtnLabel = document.getElementById('start-btn-label');
   const loadingIndicator = document.getElementById('loading-indicator');
   const cueDisplayEl = document.getElementById('cue-display');
+  const cueSubnameEl = document.getElementById('cue-subname');
   const cueNextDisplayEl = document.getElementById('cue-next-display');
-  const cuePendingBadgeEl = document.getElementById('cue-pending-badge');
+  const hudNextTagEl = document.getElementById('hud-next-tag');
+  const cuePendingTextEl = document.getElementById('cue-pending-text');
   const cueMeasureCounterEl = document.getElementById('cue-measure-counter');
   const canvas = document.getElementById('note-stream-canvas');
   const ctx = canvas ? canvas.getContext('2d') : null;
 
-  // Disable control buttons initially while audio buffers load
-  buttons.forEach(btn => (btn.disabled = true));
+  let hasStarted = false;
 
+  // 1. Audio Loading Lifecycle
   whenAudioLoaded()
     .then(() => {
       if (loadingIndicator) {
-        loadingIndicator.innerText = "✓ Sound Ready";
+        loadingIndicator.innerText = "✓ Ready";
         loadingIndicator.className = "status-pill ready";
       }
-      buttons.forEach(btn => (btn.disabled = false));
+      if (startBtn && !hasStarted) {
+        startBtn.disabled = false;
+        if (startBtnLabel) startBtnLabel.innerText = "▶ START ADVENTURE";
+        startBtn.classList.add('ready');
+      }
     })
     .catch(err => {
       console.error("Error loading soundfont samples:", err);
@@ -37,20 +46,43 @@ document.addEventListener('DOMContentLoaded', () => {
         loadingIndicator.innerText = "❌ Sample Error";
         loadingIndicator.className = "status-pill error";
       }
-      buttons.forEach(btn => (btn.disabled = true));
+      if (startBtnLabel) startBtnLabel.innerText = "ERROR LOADING";
     });
 
-  // Handle Mode Button Clicks
-  buttons.forEach(btn => {
+  // 2. Play Button Overlay Tap
+  if (startBtn) {
+    startBtn.addEventListener('click', async () => {
+      if (startBtn.disabled || hasStarted) return;
+      hasStarted = true;
+
+      // Unlock AudioContext & start sequencer with Morning & Intro cues
+      await Tone.start();
+      await changeGameMode('EXPLORATION');
+
+      // Fade out overlay with smooth animation
+      if (playOverlay) {
+        playOverlay.classList.add('fade-out');
+        setTimeout(() => {
+          playOverlay.style.display = 'none';
+        }, 450);
+      }
+
+      // Unlock mode buttons
+      modeButtons.forEach(btn => (btn.disabled = false));
+    });
+  }
+
+  // 3. Handle Mode Button Clicks
+  modeButtons.forEach(btn => {
     btn.addEventListener('click', () => {
-      if (btn.disabled) return;
+      if (btn.disabled || !hasStarted) return;
       const selectedMode = btn.getAttribute('data-mode');
 
-      // 1. Signal mode change to sequencer
+      // Signal mode change to sequencer
       changeGameMode(selectedMode);
 
-      // 2. Refresh active UI layouts
-      buttons.forEach(b => b.classList.remove('active'));
+      // Refresh button active highlights
+      modeButtons.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
     });
   });
@@ -177,14 +209,25 @@ document.addEventListener('DOMContentLoaded', () => {
     return { y: noteY, h: noteH };
   }
 
-  // Animation Loop: Renders 60 FPS continuous right-to-left note conveyor
+  // Animation Loop: Renders 60 FPS continuous right-to-left note conveyor with latency sync
   function renderVisualizer() {
     const transport = Tone.getTransport();
     const isPlaying = transport && (transport.state === 'started' || transport.state === 'running');
-    const currentTransportSec = isPlaying ? transport.seconds : 0;
+
+    // Audio-to-Visual Latency Sync Compensation:
+    // Aligns the visual note hit on PLAYHEAD_X with the exact physical sound from speakers
+    let visualizerSec = 0;
+    if (isPlaying) {
+      const rawCtx = Tone.getContext().rawContext;
+      const outputLat = (rawCtx && typeof rawCtx.outputLatency === 'number') ? rawCtx.outputLatency : 0.035;
+      const baseLat = (rawCtx && typeof rawCtx.baseLatency === 'number') ? rawCtx.baseLatency : 0.02;
+      const audioLatency = outputLat + baseLat + 0.015;
+      visualizerSec = Math.max(0, transport.seconds - audioLatency);
+    }
+
     const cueInfo = getActiveCueInfo();
 
-    // 1. Update UI Status & Cue Information Display
+    // 1. Update UI Status & Cue Information Display (Zero Layout Shift)
     updateUIElements(cueInfo, isPlaying);
 
     // 2. Draw Note Stream Canvas
@@ -197,7 +240,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.fillRect(0, 0, cssWidth, cssHeight);
 
       // Draw background grid & lane separators
-      drawCanvasBackground(ctx, cssWidth, cssHeight, currentTransportSec);
+      drawCanvasBackground(ctx, cssWidth, cssHeight, visualizerSec);
 
       // Draw streaming notes traveling right to left
       const streamNotes = getStreamNotes();
@@ -205,7 +248,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       for (let i = 0; i < streamNotes.length; i++) {
         const note = streamNotes[i];
-        const noteX = PLAYHEAD_X + (note.transportTime - currentTransportSec) * PIXELS_PER_SEC;
+        const noteX = PLAYHEAD_X + (note.transportTime - visualizerSec) * PIXELS_PER_SEC;
         const noteW = Math.max(5, (note.duration * PIXELS_PER_SEC) - 2);
 
         // Cull notes outside visible viewport
@@ -217,8 +260,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const colors = getNoteColors(note);
 
         const isCurrentlyPlaying = isPlaying &&
-          (note.transportTime <= currentTransportSec) &&
-          ((note.transportTime + note.duration) >= currentTransportSec);
+          (note.transportTime <= visualizerSec) &&
+          ((note.transportTime + note.duration) >= visualizerSec);
 
         if (isCurrentlyPlaying) {
           activeNotesHitCount++;
@@ -365,7 +408,21 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    // 2. Next Queued 8-Bar Cue ID display
+    // 2. Motif name & inline transition queue status (Zero Layout Shift)
+    if (cueSubnameEl) {
+      cueSubnameEl.innerText = cueInfo.cueName || "Hyrule Overworld";
+    }
+
+    if (cuePendingTextEl) {
+      if (cueInfo.pendingMode) {
+        cuePendingTextEl.style.display = 'inline';
+        cuePendingTextEl.innerText = ` • ⏳ Queued: ${cueInfo.pendingMode} (Bar 8 Downbeat)`;
+      } else {
+        cuePendingTextEl.style.display = 'none';
+      }
+    }
+
+    // 3. Next Queued 8-Bar Cue ID display
     if (cueNextDisplayEl) {
       if (cueInfo.upcomingCueId) {
         const nextIcon = (cueInfo.upcomingCueMode === 'BATTLE')
@@ -385,23 +442,24 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    // 3. Measure Counter within 8-bar block
+    // 4. Next Tag / Queued Tag state
+    if (hudNextTagEl) {
+      if (cueInfo.pendingMode) {
+        hudNextTagEl.innerText = "QUEUED";
+        hudNextTagEl.className = "hud-tag queued";
+      } else {
+        hudNextTagEl.innerText = "NEXT";
+        hudNextTagEl.className = "hud-tag muted";
+      }
+    }
+
+    // 5. Measure Counter within 8-bar block
     if (cueMeasureCounterEl) {
       if (isPlaying) {
         const barInBlock = Math.min(8, Math.floor(cueInfo.timeInBlock / 1.6) + 1);
         cueMeasureCounterEl.innerText = `Bar ${barInBlock}/8`;
       } else {
         cueMeasureCounterEl.innerText = "Ready";
-      }
-    }
-
-    // 4. Pending transition notification banner
-    if (cuePendingBadgeEl) {
-      if (cueInfo.pendingMode) {
-        cuePendingBadgeEl.style.display = 'block';
-        cuePendingBadgeEl.innerText = `⏳ Queued: ${cueInfo.pendingMode} (Switches at next 8-bar downbeat)`;
-      } else {
-        cuePendingBadgeEl.style.display = 'none';
       }
     }
   }

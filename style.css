@@ -6,12 +6,14 @@
     --text-primary: #f1f5f9;
     --text-muted: #8b9bb4;
     --gold: #facc15;
+    --gold-glow: rgba(250, 204, 21, 0.4);
     --green-day: #22c55e;
     --green-day-glow: rgba(34, 197, 94, 0.35);
     --blue-night: #38bdf8;
     --blue-night-glow: rgba(56, 189, 248, 0.35);
     --red-battle: #ef4444;
     --red-battle-glow: rgba(239, 68, 68, 0.35);
+    --amber-pending: #fb923c;
 }
 
 * {
@@ -30,10 +32,12 @@ body {
     align-items: center;
     min-height: 100vh;
     padding: 0.5rem;
+    overflow-x: hidden;
 }
 
 /* Nintendo Console Container */
 .nintendo-console {
+    position: relative;
     background: var(--console-bg);
     border: 2px solid var(--console-border);
     border-radius: 16px;
@@ -43,7 +47,101 @@ body {
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.08);
     display: flex;
     flex-direction: column;
-    gap: 0.65rem;
+    gap: 0.55rem;
+    overflow: hidden;
+}
+
+/* Play Button Overlay */
+.play-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(10, 14, 20, 0.88);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 14px;
+    transition: opacity 0.45s ease, transform 0.45s ease;
+}
+
+.play-overlay.fade-out {
+    opacity: 0;
+    transform: scale(1.05);
+    pointer-events: none;
+}
+
+.start-btn {
+    background: #1a222d;
+    border: 2px solid #3b4859;
+    border-radius: 50px;
+    padding: 1rem 1.75rem;
+    color: #94a3b8;
+    cursor: not-allowed;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    font-family: inherit;
+    transition: all 0.25s ease;
+    user-select: none;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+}
+
+.start-btn.ready {
+    background: #1b2636;
+    border-color: var(--gold);
+    color: var(--gold);
+    cursor: pointer;
+    box-shadow: 0 0 25px var(--gold-glow);
+    animation: startPulse 1.8s infinite ease-in-out;
+}
+
+.start-btn.ready:hover {
+    background: #233145;
+    transform: scale(1.04);
+}
+
+.start-btn.ready:active {
+    transform: scale(0.98);
+}
+
+.start-btn-inner {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.start-triforce {
+    font-size: 1.15rem;
+    color: var(--gold);
+    text-shadow: 0 0 8px rgba(250, 204, 21, 0.6);
+}
+
+.start-btn-text {
+    font-size: 1.05rem;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+}
+
+.start-subtext {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: #94a3b8;
+    text-transform: uppercase;
+}
+
+@keyframes startPulse {
+    0%, 100% {
+        box-shadow: 0 0 15px rgba(250, 204, 21, 0.3);
+        border-color: #facc15;
+    }
+    50% {
+        box-shadow: 0 0 28px rgba(250, 204, 21, 0.6);
+        border-color: #fef08a;
+    }
 }
 
 /* Header */
@@ -139,11 +237,20 @@ body {
     background: rgba(34, 197, 94, 0.18);
     color: var(--green-day);
     flex-shrink: 0;
+    border: 1px solid rgba(34, 197, 94, 0.3);
 }
 
 .hud-tag.muted {
     background: rgba(148, 163, 184, 0.15);
+    border-color: rgba(148, 163, 184, 0.25);
     color: #94a3b8;
+}
+
+.hud-tag.queued {
+    background: rgba(251, 146, 60, 0.2);
+    border-color: rgba(251, 146, 60, 0.45);
+    color: var(--amber-pending);
+    animation: nintendoPulse 0.8s infinite alternate;
 }
 
 .hud-title {
@@ -187,16 +294,26 @@ body {
     white-space: nowrap;
 }
 
-/* Transition Banner */
-.transition-pill {
-    background: rgba(251, 146, 60, 0.15);
-    border: 1px solid rgba(251, 146, 60, 0.4);
-    color: #fb923c;
-    font-size: 0.72rem;
+/* Fixed-Height Motif & Status Subline (Zero Layout Shifts) */
+.hud-subbar {
+    height: 18px;
+    line-height: 18px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    padding: 0 0.5rem;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.hud-subtext {
+    font-weight: 500;
+    color: #94a3b8;
+}
+
+.hud-pending-text {
     font-weight: 600;
-    text-align: center;
-    padding: 0.25rem 0.5rem;
-    border-radius: 6px;
+    color: var(--amber-pending);
     animation: nintendoPulse 0.8s infinite alternate;
 }
 
@@ -239,7 +356,7 @@ body {
 .dot.blue { background: var(--blue-night); }
 .dot.red { background: var(--red-battle); }
 
-/* Controller Pad: 3 Big Thumb-Friendly Tactile Buttons */
+/* Controller Pad: 3 Thumb-Friendly Tactile Buttons */
 .controller-pad {
     display: flex;
     gap: 0.5rem;
@@ -269,8 +386,9 @@ body {
 }
 
 .pad-btn:disabled {
-    opacity: 0.4;
+    opacity: 0.35;
     cursor: not-allowed;
+    filter: grayscale(0.5);
 }
 
 .pad-icon {
@@ -285,7 +403,7 @@ body {
 }
 
 /* Day Mode Active */
-.day-btn.active {
+.day-btn.active:not(:disabled) {
     background: rgba(34, 197, 94, 0.18);
     border-color: var(--green-day);
     color: #4ade80;
@@ -293,7 +411,7 @@ body {
 }
 
 /* Night Mode Active */
-.night-btn.active {
+.night-btn.active:not(:disabled) {
     background: rgba(56, 189, 248, 0.18);
     border-color: var(--blue-night);
     color: #38bdf8;
@@ -301,7 +419,7 @@ body {
 }
 
 /* Battle Mode Active */
-.battle-btn.active {
+.battle-btn.active:not(:disabled) {
     background: rgba(239, 68, 68, 0.2);
     border-color: var(--red-battle);
     color: #f87171;
@@ -321,7 +439,7 @@ body {
 
     .nintendo-console {
         padding: 0.75rem;
-        gap: 0.5rem;
+        gap: 0.45rem;
         border-radius: 12px;
     }
 
@@ -344,5 +462,13 @@ body {
 
     .pad-label {
         font-size: 0.75rem;
+    }
+
+    .start-btn {
+        padding: 0.85rem 1.4rem;
+    }
+
+    .start-btn-text {
+        font-size: 0.95rem;
     }
 }

@@ -15,6 +15,17 @@
 </head>
 <body>
     <main class="nintendo-console">
+        <!-- Play Button Overlay on Load -->
+        <div id="play-overlay" class="play-overlay">
+            <button id="start-btn" class="start-btn" disabled>
+                <div class="start-btn-inner">
+                    <span class="start-triforce">▲</span>
+                    <span id="start-btn-label" class="start-btn-text">LOADING SAMPLES...</span>
+                </div>
+                <span class="start-subtext">TAP TO ENTER HYRULE</span>
+            </button>
+        </div>
+
         <!-- Top Nintendo Bar -->
         <header class="console-header">
             <div class="brand-badge">
@@ -28,20 +39,21 @@
         <section class="hud-bar">
             <div class="hud-col active-col">
                 <span class="hud-tag">NOW</span>
-                <span id="cue-display" class="hud-title mode-exploration">☀️ Day 1 (Bars 17–25)</span>
+                <span id="cue-display" class="hud-title mode-exploration">☀️ Sunrise (Bars 1–9)</span>
             </div>
             <div class="hud-col clock-col">
                 <span id="cue-measure-counter" class="hud-clock">Bar 1/8</span>
             </div>
             <div class="hud-col next-col">
-                <span class="hud-tag muted">NEXT</span>
-                <span id="cue-next-display" class="hud-title next-title">☀️ Day 2</span>
+                <span id="hud-next-tag" class="hud-tag muted">NEXT</span>
+                <span id="cue-next-display" class="hud-title next-title">Intro Fanfare</span>
             </div>
         </section>
 
-        <!-- Transition Queue Pill (Appears when state change is queued) -->
-        <div id="cue-pending-badge" class="transition-pill" style="display: none;">
-            ⏳ Switching at next 8-bar downbeat
+        <!-- Fixed-Height Motif & Status Subline (Zero Layout Shift) -->
+        <div class="hud-subbar">
+            <span id="cue-subname" class="hud-subtext">Morning Dawn Ocarina</span>
+            <span id="cue-pending-text" class="hud-pending-text" style="display: none;">• ⏳ Queued for Bar 8 Downbeat</span>
         </div>
 
         <!-- Right-to-Left Streaming Canvas Visualizer -->
@@ -54,17 +66,17 @@
             </div>
         </div>
 
-        <!-- Nintendo 3-Button Control Pad (Touch-friendly horizontal row) -->
+        <!-- Nintendo 3-Button Control Pad (Thumb-friendly horizontal row) -->
         <nav class="controller-pad">
-            <button class="pad-btn day-btn active" data-mode="EXPLORATION">
+            <button class="pad-btn day-btn active" data-mode="EXPLORATION" disabled>
                 <span class="pad-icon">☀️</span>
                 <span class="pad-label">Day</span>
             </button>
-            <button class="pad-btn night-btn" data-mode="QUIET">
+            <button class="pad-btn night-btn" data-mode="QUIET" disabled>
                 <span class="pad-icon">🌙</span>
                 <span class="pad-label">Night</span>
             </button>
-            <button class="pad-btn battle-btn" data-mode="BATTLE">
+            <button class="pad-btn battle-btn" data-mode="BATTLE" disabled>
                 <span class="pad-icon">⚔️</span>
                 <span class="pad-label">Battle</span>
             </button>

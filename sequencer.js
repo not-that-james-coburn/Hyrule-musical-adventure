@@ -15,14 +15,24 @@ function midiToNoteName(midi) {
 
 // Measure-Based Block Mapping matching hyrule_field_midi.json (exact 8 bars each)
 export const blockMap = {
+  // Initial startup cues (strictly played on playback initiation, not in random rotation)
+  MORNING: {
+    id: 'Sunrise (Bars 1–9)',
+    name: 'Morning Dawn Ocarina',
+    startBar: 1,
+    endBar: 9,
+    mode: 'EXPLORATION'
+  },
+
   INTRO: {
-    id: 'Intro (Bars 0–17)',
-    name: 'Hyrule Morning Fanfare',
-    startBar: 0,
+    id: 'Intro (Bars 9–17)',
+    name: 'Galloping Heroic Fanfare',
+    startBar: 9,
     endBar: 17,
     mode: 'EXPLORATION'
   },
 
+  // Ongoing Exploration Pool (shuffled via ShuffleBag, no sequential repeats)
   EXPLORATION: [
     {
       id: 'Day 1 (Bars 17–25)',
@@ -61,7 +71,7 @@ export const blockMap = {
     },
     {
       id: 'Day 6 (Bars 57–65)',
-      name: 'Woodwinds & Rest',
+      name: 'Woodwinds & Pastoral Rest',
       startBar: 57,
       endBar: 65,
       mode: 'EXPLORATION'
@@ -77,6 +87,7 @@ export const blockMap = {
     mode: 'BATTLE'
   },
 
+  // Ongoing Battle Pool (shuffled via ShuffleBag, no sequential repeats)
   BATTLE: [
     {
       id: 'Battle 1 (Bars 73–81)',
@@ -94,14 +105,14 @@ export const blockMap = {
     },
     {
       id: 'Battle 3 (Bars 89–97)',
-      name: 'Aggressive Percussion',
+      name: 'Aggressive Percussion Drive',
       startBar: 89,
       endBar: 97,
       mode: 'BATTLE'
     },
     {
       id: 'Battle 4 (Bars 97–105)',
-      name: 'High Tension Brass',
+      name: 'High Danger Brass Clash',
       startBar: 97,
       endBar: 105,
       mode: 'BATTLE'
@@ -124,6 +135,7 @@ export const blockMap = {
     mode: 'EXPLORATION'
   },
 
+  // Ongoing Quiet / Night Pool (shuffled via ShuffleBag, no sequential repeats)
   QUIET: [
     {
       id: 'Night 1 (Bars 137–145)',
@@ -148,7 +160,7 @@ export const blockMap = {
     },
     {
       id: 'Night 4 (Bars 161–169)',
-      name: 'Campfire Night Reflection',
+      name: 'Campfire Night Reflections',
       startBar: 161,
       endBar: 169,
       mode: 'QUIET'
@@ -163,9 +175,45 @@ export const blockMap = {
   ]
 };
 
+/**
+ * Fisher-Yates ShuffleBag ensuring every item is played once before repeat,
+ * and zero sequential duplicates across deck reshuffles.
+ */
+class ShuffleBag {
+  constructor(items) {
+    this.items = [...items];
+    this.bag = [];
+    this.lastItem = null;
+  }
+
+  next() {
+    if (this.bag.length === 0) {
+      let candidates = [...this.items];
+      // Fisher-Yates shuffle
+      for (let i = candidates.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+      }
+      // If the first candidate to be drawn matches the last played item, swap with first item in bag
+      if (candidates.length > 1 && candidates[candidates.length - 1] === this.lastItem) {
+        [candidates[candidates.length - 1], candidates[0]] = [candidates[0], candidates[candidates.length - 1]];
+      }
+      this.bag = candidates;
+    }
+    const item = this.bag.pop();
+    this.lastItem = item;
+    return item;
+  }
+
+  reset() {
+    this.bag = [];
+    this.lastItem = null;
+  }
+}
+
 export class HyruleSequencer {
   constructor() {
-    // 3 Canonical musical modes: 'EXPLORATION', 'QUIET', 'BATTLE'
+    // Canonical musical modes: 'EXPLORATION', 'QUIET', 'BATTLE'
     this.currentState = 'EXPLORATION';
     this.pendingStateChange = null;
 
@@ -191,19 +239,22 @@ export class HyruleSequencer {
     this.phraseIndex = 0;
     this.repeatEventId = null;
 
-    // Active playing block and lookahead pre-queued upcoming block
+    // Active playing block and pre-buffered upcoming block
     this.currentBlock = null;
     this.upcomingBlock = null;
     this.currentBlockStartTransportSec = 0;
     this.currentBlockDurationSec = BLOCK_DURATION_SEC;
 
-    // Map of scheduled event IDs per phrase index for cancellation during mode shifts
+    // Map of scheduled event IDs per phrase index for clean cancellation on mode changes
     this.phraseEventIds = {};
 
-    this.explorationCueSequenceIndex = 0;
-    this.currentExplorationBlockIndex = null;
-    this.currentBattleBlockIndex = 0;
-    this.currentQuietBlockIndex = 0;
+    // Shuffle bags for non-repeating fair cue selection
+    this.explorationBag = new ShuffleBag(blockMap.EXPLORATION);
+    this.battleBag = new ShuffleBag(blockMap.BATTLE);
+    this.quietBag = new ShuffleBag(blockMap.QUIET);
+
+    // Initial startup sequence stage tracking
+    this.initialSequenceStage = 0; // 0: Morning, 1: Intro, 2: Day 1, 3+: Shuffled
 
     // Stream notes buffer for continuous right-to-left visualizer
     this.streamNotes = [];
@@ -646,11 +697,13 @@ export class HyruleSequencer {
         this.gains.explorePercussion.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
 
         this.currentState = 'EXPLORATION';
-        this.explorationCueSequenceIndex = 0;
       }
     }
   }
 
+  /**
+   * Selects next block using fair shuffle bags (zero sequential repeats)
+   */
   selectBlockForState(targetState = this.currentState) {
     if (targetState === 'BATTLE_INTRO') {
       return blockMap.BATTLE_INTRO;
@@ -659,31 +712,21 @@ export class HyruleSequencer {
       return blockMap.BATTLE_OUTRO;
     }
     if (targetState === 'BATTLE') {
-      const battleChunks = blockMap.BATTLE;
-      const chosen = battleChunks[this.currentBattleBlockIndex % battleChunks.length];
-      this.currentBattleBlockIndex++;
-      return chosen;
+      return this.battleBag.next();
     }
     if (targetState === 'QUIET') {
-      const quietChunks = blockMap.QUIET;
-      const chosen = quietChunks[this.currentQuietBlockIndex % quietChunks.length];
-      this.currentQuietBlockIndex++;
-      return chosen;
+      return this.quietBag.next();
     }
 
-    // EXPLORATION: Pick from 8-bar exploration pool
-    const pool = blockMap.EXPLORATION;
-    if (this.explorationCueSequenceIndex === 0) {
-      this.explorationCueSequenceIndex = 1;
-      this.currentExplorationBlockIndex = 0;
-      return pool[0]; // Day 1 initially
-    } else {
-      let available = pool.map((_, i) => i).filter(i => i !== this.currentExplorationBlockIndex);
-      if (available.length === 0) available = [0];
-      const chosenIdx = available[Math.floor(Math.random() * available.length)];
-      this.currentExplorationBlockIndex = chosenIdx;
-      return pool[chosenIdx];
+    // EXPLORATION:
+    // If still in startup sequence, advance through Day 1
+    if (this.initialSequenceStage === 2) {
+      this.initialSequenceStage = 3;
+      return blockMap.EXPLORATION[0]; // Day 1
     }
+
+    // Ongoing exploration rotation: drawn fairly from shuffle bag
+    return this.explorationBag.next();
   }
 
   clearPhraseEvents(phraseIdx) {
@@ -819,10 +862,15 @@ export class HyruleSequencer {
       this.phraseIndex = 0;
       this.streamNotes = [];
       this.phraseEventIds = {};
-      this.explorationCueSequenceIndex = 0;
 
-      // 1. Schedule initial active Block 0 (Phrase 0: 0.0s - 12.8s)
-      const block0 = this.selectBlockForState(this.currentState);
+      // Reset shuffle bags
+      this.explorationBag.reset();
+      this.battleBag.reset();
+      this.quietBag.reset();
+
+      // Startup Sequence:
+      // Phrase 0 (0.0s - 12.8s): Morning Sunrise cue (Bars 1–9)
+      const block0 = blockMap.MORNING;
       this.currentBlock = block0;
       this.currentBlockStartTransportSec = 0;
       this.currentBlockDurationSec = this.BLOCK_DURATION_SEC;
@@ -830,12 +878,14 @@ export class HyruleSequencer {
       currentBlockDurationSec = this.BLOCK_DURATION_SEC;
       this.scheduleNotesForBlock(block0, 0, 0);
 
-      // 2. Lookahead: Pre-queue upcoming Block 1 (Phrase 1: 12.8s - 25.6s)
-      const block1 = this.selectBlockForState(this.currentState);
+      // Phrase 1 (12.8s - 25.6s): Heroic Intro Fanfare (Bars 9–17)
+      const block1 = blockMap.INTRO;
       this.upcomingBlock = block1;
       this.scheduleNotesForBlock(block1, 1, this.BLOCK_DURATION_SEC);
 
-      // 3. Master 8-bar loop recurring clock: fires on every 8-measure boundary
+      this.initialSequenceStage = 2; // Next will be Day 1
+
+      // Master 8-bar loop recurring clock: fires on every 8-measure boundary
       this.repeatEventId = transport.scheduleRepeat((time) => {
         this.onPhraseBoundary(time);
       }, `${this.BARS_PER_BLOCK}m`, `${this.BARS_PER_BLOCK}m`);
@@ -895,8 +945,8 @@ export function getActiveCueInfo() {
   const blockDurSec = sequencer.BLOCK_DURATION_SEC;
 
   return {
-    cueId: currentBlock ? currentBlock.id : 'Day 1 (Bars 17–25)',
-    cueName: currentBlock ? currentBlock.name : 'Main Theme A (Overworld)',
+    cueId: currentBlock ? currentBlock.id : 'Sunrise (Bars 1–9)',
+    cueName: currentBlock ? currentBlock.name : 'Morning Dawn Ocarina',
     cueMode: currentBlock ? currentBlock.mode : 'EXPLORATION',
     upcomingCueId: upcomingBlock ? upcomingBlock.id : null,
     upcomingCueName: upcomingBlock ? upcomingBlock.name : null,
