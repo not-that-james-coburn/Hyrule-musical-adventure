@@ -25,134 +25,136 @@ export const blockMap = {
 
   EXPLORATION: [
     {
-      id: 'Day Chunk 1 (Bars 17–25)',
+      id: 'Day 1 (Bars 17–25)',
       name: 'Main Theme A (Overworld)',
       startBar: 17,
       endBar: 25,
       mode: 'EXPLORATION'
     },
     {
-      id: 'Day Chunk 2 (Bars 25–33)',
+      id: 'Day 2 (Bars 25–33)',
       name: 'Heroic March Variation',
       startBar: 25,
       endBar: 33,
       mode: 'EXPLORATION'
     },
     {
-      id: 'Day Chunk 3 (Bars 33–41)',
+      id: 'Day 3 (Bars 33–41)',
       name: 'Expansive Horizons Brass',
       startBar: 33,
       endBar: 41,
       mode: 'EXPLORATION'
     },
     {
-      id: 'Day Chunk 4 (Bars 41–49)',
+      id: 'Day 4 (Bars 41–49)',
       name: 'Adventure Motif Flourish',
       startBar: 41,
       endBar: 49,
       mode: 'EXPLORATION'
     },
     {
-      id: 'Day Chunk 5 (Bars 49–57)',
+      id: 'Day 5 (Bars 49–57)',
       name: 'Plains Bridge & Strings',
       startBar: 49,
       endBar: 57,
       mode: 'EXPLORATION'
     },
     {
-      id: 'Day Chunk 6 (Bars 57–65)',
-      name: 'Woodwinds & Pastoral Rest',
+      id: 'Day 6 (Bars 57–65)',
+      name: 'Woodwinds & Rest',
       startBar: 57,
       endBar: 65,
       mode: 'EXPLORATION'
     }
   ],
 
+  // Battle Intro starts on Bar 65 (eliminates the 1-bar offset from Day 6)
   BATTLE_INTRO: {
-    id: 'Battle Intro (Bars 64–72)',
-    name: 'Enemy Sighted Tension',
-    startBar: 64,
-    endBar: 72,
+    id: 'Battle Intro (Bars 65–73)',
+    name: 'Enemy Spotted Tension',
+    startBar: 65,
+    endBar: 73,
     mode: 'BATTLE'
   },
 
   BATTLE: [
     {
-      id: 'Battle Chunk 1 (Bars 72–80)',
-      name: 'Combat Skirmish Riff A',
-      startBar: 72,
-      endBar: 80,
+      id: 'Battle 1 (Bars 73–81)',
+      name: 'Combat Skirmish Riff',
+      startBar: 73,
+      endBar: 81,
       mode: 'BATTLE'
     },
     {
-      id: 'Battle Chunk 2 (Bars 80–88)',
+      id: 'Battle 2 (Bars 81–89)',
       name: 'Fast Swords & Shields',
-      startBar: 80,
-      endBar: 88,
+      startBar: 81,
+      endBar: 89,
       mode: 'BATTLE'
     },
     {
-      id: 'Battle Chunk 3 (Bars 88–96)',
-      name: 'Aggressive Percussion Drive',
-      startBar: 88,
-      endBar: 96,
+      id: 'Battle 3 (Bars 89–97)',
+      name: 'Aggressive Percussion',
+      startBar: 89,
+      endBar: 97,
       mode: 'BATTLE'
     },
     {
-      id: 'Battle Chunk 4 (Bars 96–104)',
-      name: 'High Tension Brass Clash',
-      startBar: 96,
-      endBar: 104,
+      id: 'Battle 4 (Bars 97–105)',
+      name: 'High Tension Brass',
+      startBar: 97,
+      endBar: 105,
       mode: 'BATTLE'
     },
     {
-      id: 'Battle Chunk 5 (Bars 104–112)',
+      id: 'Battle 5 (Bars 105–113)',
       name: 'Counterattack Crescendo',
-      startBar: 104,
-      endBar: 112,
+      startBar: 105,
+      endBar: 113,
       mode: 'BATTLE'
     }
   ],
 
+  // Victory Flourish starts on Bar 113
   BATTLE_OUTRO: {
-    id: 'Victory Flourish (Bars 112–120)',
+    id: 'Victory (Bars 113–121)',
     name: 'Enemy Defeated Fanfare',
-    startBar: 112,
-    endBar: 120,
+    startBar: 113,
+    endBar: 121,
     mode: 'EXPLORATION'
   },
 
   QUIET: [
     {
-      id: 'Quiet Chunk 1 (Bars 137–145)',
+      id: 'Night 1 (Bars 137–145)',
       name: 'Nocturne Harp Serenade',
       startBar: 137,
       endBar: 145,
       mode: 'QUIET'
     },
     {
-      id: 'Quiet Chunk 2 (Bars 145–153)',
+      id: 'Night 2 (Bars 145–153)',
       name: 'Starlit Plains Solitude',
       startBar: 145,
       endBar: 153,
       mode: 'QUIET'
     },
     {
-      id: 'Quiet Chunk 3 (Bars 153–161)',
+      id: 'Night 3 (Bars 153–161)',
       name: 'Gentle Nocturnal Ocarina',
       startBar: 153,
       endBar: 161,
       mode: 'QUIET'
     },
     {
-      id: 'Quiet Chunk 4 (Bars 161–169)',
-      name: 'Campfire Night Reflections',
+      id: 'Night 4 (Bars 161–169)',
+      name: 'Campfire Night Reflection',
       startBar: 161,
       endBar: 169,
       mode: 'QUIET'
     },
     {
-      id: 'Quiet Chunk 5 (Bars 169–177)',
+      id: 'Night 5 (Bars 169–177)',
       name: 'Dawn Whispers Harmony',
       startBar: 169,
       endBar: 177,
@@ -549,21 +551,17 @@ export class HyruleSequencer {
       this.executeMovementCrossfade('QUIET');
       this.pendingStateChange = 'QUIET';
       this.requeueUpcomingPhrase('QUIET');
-      console.log('Quiet transition queued. Upcoming phrase pre-buffered...');
     } else if (newState === 'EXPLORATION' && this.currentState === 'QUIET') {
       // Immediate volume crossfade mid-bar
       this.executeMovementCrossfade('EXPLORATION');
       this.pendingStateChange = 'EXPLORATION';
       this.requeueUpcomingPhrase('EXPLORATION');
-      console.log('Exploration return queued. Upcoming phrase pre-buffered...');
     } else if (newState === 'BATTLE') {
       this.pendingStateChange = 'BATTLE';
       this.requeueUpcomingPhrase('BATTLE_INTRO');
-      console.log('Battle encounter queued. Upcoming phrase pre-buffered with Battle Intro...');
     } else if (newState === 'EXPLORATION' && (this.currentState === 'BATTLE' || this.currentState === 'BATTLE_INTRO')) {
       this.pendingStateChange = 'EXPLORATION';
       this.requeueUpcomingPhrase('BATTLE_OUTRO');
-      console.log('Victory return queued. Upcoming phrase pre-buffered with Victory Flourish...');
     } else if (newState === 'EXPLORATION') {
       this.pendingStateChange = 'EXPLORATION';
       this.requeueUpcomingPhrase('EXPLORATION');
@@ -678,7 +676,7 @@ export class HyruleSequencer {
     if (this.explorationCueSequenceIndex === 0) {
       this.explorationCueSequenceIndex = 1;
       this.currentExplorationBlockIndex = 0;
-      return pool[0]; // Day Chunk 1 initially
+      return pool[0]; // Day 1 initially
     } else {
       let available = pool.map((_, i) => i).filter(i => i !== this.currentExplorationBlockIndex);
       if (available.length === 0) available = [0];
@@ -897,7 +895,7 @@ export function getActiveCueInfo() {
   const blockDurSec = sequencer.BLOCK_DURATION_SEC;
 
   return {
-    cueId: currentBlock ? currentBlock.id : 'Day Chunk 1 (Bars 17–25)',
+    cueId: currentBlock ? currentBlock.id : 'Day 1 (Bars 17–25)',
     cueName: currentBlock ? currentBlock.name : 'Main Theme A (Overworld)',
     cueMode: currentBlock ? currentBlock.mode : 'EXPLORATION',
     upcomingCueId: upcomingBlock ? upcomingBlock.id : null,

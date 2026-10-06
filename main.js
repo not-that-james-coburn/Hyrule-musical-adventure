@@ -11,11 +11,9 @@ import {
 } from './sequencer.js';
 
 document.addEventListener('DOMContentLoaded', () => {
-  const buttons = document.querySelectorAll('.state-btn');
-  const displayEl = document.getElementById('current-state-display');
+  const buttons = document.querySelectorAll('.pad-btn');
   const loadingIndicator = document.getElementById('loading-indicator');
   const cueDisplayEl = document.getElementById('cue-display');
-  const cueSubnameEl = document.getElementById('cue-subname');
   const cueNextDisplayEl = document.getElementById('cue-next-display');
   const cuePendingBadgeEl = document.getElementById('cue-pending-badge');
   const cueMeasureCounterEl = document.getElementById('cue-measure-counter');
@@ -28,18 +26,16 @@ document.addEventListener('DOMContentLoaded', () => {
   whenAudioLoaded()
     .then(() => {
       if (loadingIndicator) {
-        loadingIndicator.innerText = "✓ Soundfont Audio Ready";
-        loadingIndicator.classList.add('loaded');
-        loadingIndicator.classList.remove('error');
+        loadingIndicator.innerText = "✓ Sound Ready";
+        loadingIndicator.className = "status-pill ready";
       }
       buttons.forEach(btn => (btn.disabled = false));
     })
     .catch(err => {
       console.error("Error loading soundfont samples:", err);
       if (loadingIndicator) {
-        loadingIndicator.innerText = "❌ Failed to load audio samples. Please check connection and refresh.";
-        loadingIndicator.classList.add('error');
-        loadingIndicator.classList.remove('loaded');
+        loadingIndicator.innerText = "❌ Sample Error";
+        loadingIndicator.className = "status-pill error";
       }
       buttons.forEach(btn => (btn.disabled = true));
     });
@@ -66,16 +62,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // -------------------------------------------------------------
   // CONTINUOUS RIGHT-TO-LEFT STREAMING NOTE VISUALIZER (CANVAS)
   // -------------------------------------------------------------
-  const PLAYHEAD_X = 84; // Fixed playhead X position in CSS pixels
-  const PIXELS_PER_SEC = 110; // Scrolling conveyor rate
+  const PLAYHEAD_X = 64; // Compact playhead X position for mobile
+  const PIXELS_PER_SEC = 100; // Conveyor rate
 
   // Setup HiDPI Canvas Scaling
   function setupCanvasDPI() {
     if (!canvas || !ctx) return;
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
-    const targetWidth = rect.width || 640;
-    const targetHeight = 230;
+    const targetWidth = rect.width || 600;
+    const targetHeight = 175;
 
     canvas.width = targetWidth * dpr;
     canvas.height = targetHeight * dpr;
@@ -85,11 +81,11 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('resize', setupCanvasDPI);
   setupCanvasDPI();
 
-  // Lane geometry definitions
+  // Lane geometry definitions (compact 175px height)
   const LANES = {
-    melody: { top: 26, bottom: 92, height: 66, label: 'MELODY' },
-    bass: { top: 98, bottom: 160, height: 62, label: 'BASS' },
-    percussion: { top: 166, bottom: 224, height: 58, label: 'PERCUSSION' }
+    melody: { top: 18, bottom: 74, height: 56, label: 'MELODY' },
+    bass: { top: 80, bottom: 126, height: 46, label: 'BASS' },
+    percussion: { top: 132, bottom: 172, height: 40, label: 'PERC' }
   };
 
   function getNoteColors(note) {
@@ -138,8 +134,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const minMidi = 52;
       const maxMidi = 88;
       const norm = Math.max(0, Math.min(1, (note.midi - minMidi) / (maxMidi - minMidi)));
-      const noteH = 6;
-      const noteY = (lane.bottom - 4) - norm * (lane.height - 12) - noteH;
+      const noteH = 5;
+      const noteY = (lane.bottom - 3) - norm * (lane.height - 10) - noteH;
       return { y: noteY, h: noteH };
     }
 
@@ -149,33 +145,33 @@ document.addEventListener('DOMContentLoaded', () => {
       const minMidi = 28;
       const maxMidi = 55;
       const norm = Math.max(0, Math.min(1, (note.midi - minMidi) / (maxMidi - minMidi)));
-      const noteH = 7;
-      const noteY = (lane.bottom - 4) - norm * (lane.height - 14) - noteH;
+      const noteH = 6;
+      const noteY = (lane.bottom - 3) - norm * (lane.height - 11) - noteH;
       return { y: noteY, h: noteH };
     }
 
     // Percussion
     const lane = LANES.percussion;
     const pitch = note.midi;
-    let noteY = lane.bottom - 16;
-    let noteH = 8;
+    let noteY = lane.bottom - 12;
+    let noteH = 7;
 
     if (pitch === 35 || pitch === 36) {
-      // Kick drum (bottom of lane)
-      noteY = lane.bottom - 12;
-      noteH = 9;
-    } else if (pitch === 38 || pitch === 40) {
-      // Snare (middle of lane)
-      noteY = lane.top + 24;
+      // Kick drum
+      noteY = lane.bottom - 10;
       noteH = 7;
+    } else if (pitch === 38 || pitch === 40) {
+      // Snare
+      noteY = lane.top + 16;
+      noteH = 6;
     } else if (pitch === 42 || pitch === 44 || pitch === 46) {
-      // Hi-hat / Cymbals (top of lane)
-      noteY = lane.top + 6;
-      noteH = 5;
+      // Hi-hat
+      noteY = lane.top + 4;
+      noteH = 4;
     } else {
       // Toms / Timpani
-      noteY = lane.top + 16;
-      noteH = 7;
+      noteY = lane.top + 10;
+      noteH = 6;
     }
 
     return { y: noteY, h: noteH };
@@ -193,11 +189,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 2. Draw Note Stream Canvas
     if (canvas && ctx) {
-      const cssWidth = canvas.getBoundingClientRect().width || 640;
-      const cssHeight = 230;
+      const cssWidth = canvas.getBoundingClientRect().width || 600;
+      const cssHeight = 175;
 
       // Clear Canvas Background
-      ctx.fillStyle = '#0b0f14';
+      ctx.fillStyle = '#080c10';
       ctx.fillRect(0, 0, cssWidth, cssHeight);
 
       // Draw background grid & lane separators
@@ -210,10 +206,10 @@ document.addEventListener('DOMContentLoaded', () => {
       for (let i = 0; i < streamNotes.length; i++) {
         const note = streamNotes[i];
         const noteX = PLAYHEAD_X + (note.transportTime - currentTransportSec) * PIXELS_PER_SEC;
-        const noteW = Math.max(6, (note.duration * PIXELS_PER_SEC) - 2);
+        const noteW = Math.max(5, (note.duration * PIXELS_PER_SEC) - 2);
 
         // Cull notes outside visible viewport
-        if (noteX + noteW < 0 || noteX > cssWidth + 80) {
+        if (noteX + noteW < 0 || noteX > cssWidth + 60) {
           continue;
         }
 
@@ -228,12 +224,11 @@ document.addEventListener('DOMContentLoaded', () => {
           activeNotesHitCount++;
         }
 
-        // Draw note rounded bar
         ctx.save();
 
-        // Alpha fade out if passing playhead towards the left margin
+        // Alpha fade out as notes pass playhead towards left margin
         if (noteX < PLAYHEAD_X) {
-          const fadeAlpha = Math.max(0.15, (noteX + noteW) / (PLAYHEAD_X + noteW));
+          const fadeAlpha = Math.max(0.12, (noteX + noteW) / (PLAYHEAD_X + noteW));
           ctx.globalAlpha = fadeAlpha;
         }
 
@@ -243,12 +238,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isCurrentlyPlaying) {
           ctx.shadowColor = colors.glow;
-          ctx.shadowBlur = 14;
+          ctx.shadowBlur = 12;
         }
 
         ctx.beginPath();
         if (typeof ctx.roundRect === 'function') {
-          ctx.roundRect(noteX, y, noteW, h, 3);
+          ctx.roundRect(noteX, y, noteW, h, 2.5);
         } else {
           ctx.rect(noteX, y, noteW, h);
         }
@@ -271,16 +266,16 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.fillStyle = idx % 2 === 0 ? 'rgba(255, 255, 255, 0.015)' : 'rgba(0, 0, 0, 0.15)';
       ctx.fillRect(0, lane.top, width, lane.height);
 
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.07)';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(0, lane.bottom);
       ctx.lineTo(width, lane.bottom);
       ctx.stroke();
 
-      ctx.fillStyle = 'rgba(148, 163, 184, 0.45)';
-      ctx.font = '9px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-      ctx.fillText(lane.label, 12, lane.top + 13);
+      ctx.fillStyle = 'rgba(148, 163, 184, 0.4)';
+      ctx.font = '8px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      ctx.fillText(lane.label, 8, lane.top + 10);
     });
 
     // 2. Measure / Bar Grid Lines scrolling right-to-left (1 bar = 1.6s at 150 BPM)
@@ -293,7 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const barTime = b * barSec;
       const barX = PLAYHEAD_X + (barTime - currentTransportSec) * PIXELS_PER_SEC;
 
-      if (barX >= 0 && barX <= width + 50) {
+      if (barX >= 0 && barX <= width + 40) {
         const is8BarBoundary = (b % 8 === 0);
 
         ctx.beginPath();
@@ -301,20 +296,18 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.lineTo(barX, height);
 
         if (is8BarBoundary) {
-          // Luminous 8-bar phrase boundary line
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-          ctx.lineWidth = 1.8;
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+          ctx.lineWidth = 1.5;
           ctx.setLineDash([]);
           ctx.stroke();
 
-          // Subtitle tag at top of phrase boundary
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
-          ctx.font = '8px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-          ctx.fillText('8-BAR CUE BOUNDARY', barX + 4, 13);
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+          ctx.font = '7.5px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+          ctx.fillText('8-BAR', barX + 3, 11);
         } else {
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
           ctx.lineWidth = 1;
-          ctx.setLineDash([3, 4]);
+          ctx.setLineDash([2, 3]);
           ctx.stroke();
         }
       }
@@ -330,11 +323,11 @@ document.addEventListener('DOMContentLoaded', () => {
       : (cueInfo.cueMode === 'QUIET' ? '#38bdf8' : '#4ade80');
 
     ctx.strokeStyle = isHitting ? '#ffffff' : hitColor;
-    ctx.lineWidth = isHitting ? 2.5 : 2;
+    ctx.lineWidth = isHitting ? 2 : 1.5;
 
     if (isHitting) {
       ctx.shadowColor = hitColor;
-      ctx.shadowBlur = 12;
+      ctx.shadowBlur = 10;
     }
 
     ctx.beginPath();
@@ -342,12 +335,12 @@ document.addEventListener('DOMContentLoaded', () => {
     ctx.lineTo(PLAYHEAD_X, height);
     ctx.stroke();
 
-    // Playhead top triangle marker
+    // Playhead top marker
     ctx.fillStyle = isHitting ? '#ffffff' : hitColor;
     ctx.beginPath();
-    ctx.moveTo(PLAYHEAD_X - 5, 0);
-    ctx.lineTo(PLAYHEAD_X + 5, 0);
-    ctx.lineTo(PLAYHEAD_X, 8);
+    ctx.moveTo(PLAYHEAD_X - 4, 0);
+    ctx.lineTo(PLAYHEAD_X + 4, 0);
+    ctx.lineTo(PLAYHEAD_X, 6);
     ctx.closePath();
     ctx.fill();
 
@@ -355,41 +348,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function updateUIElements(cueInfo, isPlaying) {
-    if (!displayEl) return;
-
-    // 1. Current State display
-    if (cueInfo.pendingMode) {
-      if (cueInfo.pendingMode === 'BATTLE') {
-        displayEl.innerText = "⚔️ Combat (Pending Phrase Downbeat...)";
-        displayEl.className = "status-value mode-pending";
-      } else if (cueInfo.pendingMode === 'EXPLORATION') {
-        displayEl.innerText = "☀️ Exploration (Pending Victory Flourish...)";
-        displayEl.className = "status-value mode-pending";
-      } else if (cueInfo.pendingMode === 'QUIET') {
-        displayEl.innerText = "🌙 Quiet (Pending Phrase Downbeat...)";
-        displayEl.className = "status-value mode-pending";
-      } else {
-        displayEl.innerText = `${cueInfo.pendingMode} (Pending Phrase Downbeat...)`;
-        displayEl.className = "status-value mode-pending";
-      }
-    } else if (cueInfo.currentMode === 'EXPLORATION') {
-      displayEl.innerText = "Exploration (Day)";
-      displayEl.className = "status-value mode-exploration";
-    } else if (cueInfo.currentMode === 'QUIET') {
-      displayEl.innerText = "Quiet (Night/Rest)";
-      displayEl.className = "status-value mode-quiet";
-    } else if (cueInfo.currentMode === 'BATTLE_INTRO') {
-      displayEl.innerText = "⚠️ COMBAT INTRO";
-      displayEl.className = "status-value mode-battle";
-    } else if (cueInfo.currentMode === 'BATTLE_OUTRO') {
-      displayEl.innerText = "⚔️ VICTORY FLOURISH";
-      displayEl.className = "status-value mode-battle";
-    } else if (cueInfo.currentMode === 'BATTLE') {
-      displayEl.innerText = "⚠️ COMBAT ENGAGED";
-      displayEl.className = "status-value mode-battle";
-    }
-
-    // 2. Active 8-Bar Cue ID display
+    // 1. Active 8-Bar Cue ID display
     if (cueDisplayEl) {
       const modeIcon = (cueInfo.cueMode === 'BATTLE')
         ? '⚔️'
@@ -398,54 +357,49 @@ document.addEventListener('DOMContentLoaded', () => {
       cueDisplayEl.innerText = `${modeIcon} ${cueInfo.cueId}`;
 
       if (cueInfo.cueMode === 'BATTLE') {
-        cueDisplayEl.className = "cue-badge mode-battle";
+        cueDisplayEl.className = "hud-title mode-battle";
       } else if (cueInfo.cueMode === 'QUIET') {
-        cueDisplayEl.className = "cue-badge mode-quiet";
+        cueDisplayEl.className = "hud-title mode-quiet";
       } else {
-        cueDisplayEl.className = "cue-badge mode-exploration";
+        cueDisplayEl.className = "hud-title mode-exploration";
       }
     }
 
-    if (cueSubnameEl) {
-      cueSubnameEl.innerText = cueInfo.cueName || "Hyrule Overworld";
-    }
-
-    // 3. Next Queued 8-Bar Cue ID display
+    // 2. Next Queued 8-Bar Cue ID display
     if (cueNextDisplayEl) {
       if (cueInfo.upcomingCueId) {
         const nextIcon = (cueInfo.upcomingCueMode === 'BATTLE')
           ? '⚔️'
           : (cueInfo.upcomingCueMode === 'QUIET' ? '🌙' : '☀️');
-        cueNextDisplayEl.innerText = `${nextIcon} ${cueInfo.upcomingCueId}`;
+        cueNextDisplayEl.innerText = `${nextIcon} ${cueInfo.upcomingCueId.replace(/\s*\(Bars.*?\)/, '')}`;
 
         if (cueInfo.upcomingCueMode === 'BATTLE') {
-          cueNextDisplayEl.className = "cue-next-badge mode-battle";
+          cueNextDisplayEl.className = "hud-title next-title mode-battle";
         } else if (cueInfo.upcomingCueMode === 'QUIET') {
-          cueNextDisplayEl.className = "cue-next-badge mode-quiet";
+          cueNextDisplayEl.className = "hud-title next-title mode-quiet";
         } else {
-          cueNextDisplayEl.className = "cue-next-badge mode-exploration";
+          cueNextDisplayEl.className = "hud-title next-title mode-exploration";
         }
       } else {
         cueNextDisplayEl.innerText = "--";
       }
     }
 
-    // 4. Measure Counter within 8-bar block
+    // 3. Measure Counter within 8-bar block
     if (cueMeasureCounterEl) {
       if (isPlaying) {
         const barInBlock = Math.min(8, Math.floor(cueInfo.timeInBlock / 1.6) + 1);
-        const timeSec = (cueInfo.timeInBlock % 12.8).toFixed(1);
-        cueMeasureCounterEl.innerText = `Bar ${barInBlock} / 8 (${timeSec}s)`;
+        cueMeasureCounterEl.innerText = `Bar ${barInBlock}/8`;
       } else {
-        cueMeasureCounterEl.innerText = "Ready to Play";
+        cueMeasureCounterEl.innerText = "Ready";
       }
     }
 
-    // 5. Pending transition notification banner
+    // 4. Pending transition notification banner
     if (cuePendingBadgeEl) {
       if (cueInfo.pendingMode) {
         cuePendingBadgeEl.style.display = 'block';
-        cuePendingBadgeEl.innerText = `⏳ Transition Queued: ${cueInfo.pendingMode} (Switches at Bar 8 Downbeat)`;
+        cuePendingBadgeEl.innerText = `⏳ Queued: ${cueInfo.pendingMode} (Switches at next 8-bar downbeat)`;
       } else {
         cuePendingBadgeEl.style.display = 'none';
       }
