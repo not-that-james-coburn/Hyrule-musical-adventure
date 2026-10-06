@@ -272,19 +272,51 @@ export class HyruleSequencer {
       transport.bpm.value = this.BPM;
       transport.timeSignature = [4, 4];
 
-      // 1. Output Pipeline: Direct Master Limiter + Reverb
-      this.masterLimiter = new Tone.Limiter(-1).toDestination();
-      this.masterReverb = new Tone.Reverb({ decay: 2.2, wet: 0.2 }).connect(this.masterLimiter);
+      // 1. Output Pipeline: N64 DSP Mixer & Mastering Chain
+      // Prevents digital clipping, glues orchestral instruments, rolls off shrill high-end
+      this.masterLimiter = new Tone.Limiter(-0.5).toDestination();
 
-      // Connect localized gains to limiter for immediate audio output
-      this.gains.exploreCore.connect(this.masterLimiter);
-      this.gains.explorePercussion.connect(this.masterLimiter);
-      this.gains.idleHarp.connect(this.masterLimiter);
-      this.gains.battleMusic.connect(this.masterLimiter);
+      this.masterVolume = new Tone.Volume(-2.5).connect(this.masterLimiter);
 
-      // Send ambient depth to reverb
-      this.gains.exploreCore.connect(this.masterReverb);
-      this.gains.idleHarp.connect(this.masterReverb);
+      this.masterCompressor = new Tone.Compressor({
+        threshold: -18,
+        ratio: 2.8,
+        attack: 0.03,
+        release: 0.25,
+        knee: 6
+      }).connect(this.masterVolume);
+
+      this.masterReverb = new Tone.Reverb({
+        decay: 2.4,
+        preDelay: 0.02,
+        wet: 0.22
+      }).connect(this.masterCompressor);
+
+      // Analog reconstruction low-pass filter (emulating authentic N64 DAC filter)
+      this.masterWarmthFilter = new Tone.Filter({
+        frequency: 11500,
+        type: 'lowpass',
+        rolloff: -12,
+        Q: 0.7
+      }).connect(this.masterReverb);
+
+      // 3-Band Equalizer: tames harsh high frequencies, scoops boxy mids, adds warm orchestral body
+      this.masterEQ = new Tone.EQ3({
+        low: 2.2,
+        mid: -1.2,
+        high: -4.0,
+        lowFrequency: 320,
+        highFrequency: 3500
+      }).connect(this.masterWarmthFilter);
+
+      // Master Pre-Bus summing stem gains
+      this.masterPreBus = new Tone.Gain(1.0).connect(this.masterEQ);
+
+      // Connect localized stems into Master Pre-Bus
+      this.gains.exploreCore.connect(this.masterPreBus);
+      this.gains.explorePercussion.connect(this.masterPreBus);
+      this.gains.idleHarp.connect(this.masterPreBus);
+      this.gains.battleMusic.connect(this.masterPreBus);
 
       // 2. Load Assets (manifest + MIDI data)
       await this.loadProjectAssets();
@@ -295,7 +327,7 @@ export class HyruleSequencer {
       // Wait for soundfont samples to buffer with timeout protection
       try {
         await Promise.race([
-          Tone.loaded(),
+          Promise.all([Tone.loaded(), this.masterReverb ? this.masterReverb.ready : Promise.resolve()]),
           new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Sample loading timed out after 20s')), 20000)
           )
@@ -381,27 +413,45 @@ export class HyruleSequencer {
   }
 
   createSoundfontRack() {
+    // Calibrated instrument balance: resolves harshness, shrill ocarina/brass, and balances orchestral dynamics
     const sampleSpecs = {
-      piano: { filter: k => k.startsWith('Grand Piano'), defaultVol: -6 },
-      trombone: { filter: k => k.startsWith('Trombone'), defaultVol: -2 },
-      trumpet: { filter: k => k.startsWith('Trumpet'), defaultVol: -2 },
-      brassSection: { filter: k => k.startsWith('Brass Section'), defaultVol: -3 },
-      stringEnsemble: { filter: k => k.startsWith('StrLoop'), defaultVol: -5 },
-      stringEnsemble2: { filter: k => k.startsWith('StrLoop'), defaultVol: -5 },
-      cello: { filter: k => k.startsWith('Cello'), defaultVol: -4 },
-      doubleBass: { filter: k => k.startsWith('Double Bass'), defaultVol: -3 },
-      pickBass: { filter: k => k.startsWith('Pick Bass'), defaultVol: -2 },
-      flute: { filter: k => k.startsWith('Flute'), defaultVol: -3 },
-      tenorSax: { filter: k => k.startsWith('Tenor Sax'), defaultVol: -3 },
-      ocarina: { filter: k => k.startsWith('Ocarina'), defaultVol: -2 },
-      harp: { filter: k => k.startsWith('Orchestral Harp'), defaultVol: -4 },
-      accordion: { filter: k => k.startsWith('Accordion'), defaultVol: -5 },
-      marimba: { filter: k => k.startsWith('Marimba'), defaultVol: -3 },
-      vibraphone: { filter: k => k.startsWith('Vibraphone'), defaultVol: -3 },
-      timpani: { filter: k => k.startsWith('Timpani'), defaultVol: -2 },
-      snare: { filter: k => k.startsWith('Standard Snare 3') || k.startsWith('Jazz Snare'), defaultVol: -3 },
-      tom: { filter: k => k.startsWith('Standard Tom 5'), defaultVol: -3 }
+      piano: { filter: k => k.startsWith('Grand Piano'), defaultVol: -7.0 },
+      trombone: { filter: k => k.startsWith('Trombone'), defaultVol: -7.0 },
+      trumpet: { filter: k => k.startsWith('Trumpet'), defaultVol: -8.5 },
+      brassSection: { filter: k => k.startsWith('Brass Section'), defaultVol: -7.5 },
+      stringEnsemble: { filter: k => k.startsWith('StrLoop'), defaultVol: -7.0 },
+      stringEnsemble2: { filter: k => k.startsWith('StrLoop'), defaultVol: -7.0 },
+      cello: { filter: k => k.startsWith('Cello'), defaultVol: -5.5 },
+      doubleBass: { filter: k => k.startsWith('Double Bass'), defaultVol: -4.5 },
+      pickBass: { filter: k => k.startsWith('Pick Bass'), defaultVol: -4.0 },
+      flute: { filter: k => k.startsWith('Flute'), defaultVol: -8.0 },
+      tenorSax: { filter: k => k.startsWith('Tenor Sax'), defaultVol: -7.5 },
+      ocarina: { filter: k => k.startsWith('Ocarina'), defaultVol: -9.5 }, // Tames piercing high register
+      harp: { filter: k => k.startsWith('Orchestral Harp'), defaultVol: -6.5 },
+      accordion: { filter: k => k.startsWith('Accordion'), defaultVol: -8.0 },
+      marimba: { filter: k => k.startsWith('Marimba'), defaultVol: -6.5 },
+      vibraphone: { filter: k => k.startsWith('Vibraphone'), defaultVol: -7.0 },
+      timpani: { filter: k => k.startsWith('Timpani'), defaultVol: -4.5 },
+      snare: { filter: k => k.startsWith('Standard Snare 3') || k.startsWith('Jazz Snare'), defaultVol: -5.5 },
+      tom: { filter: k => k.startsWith('Standard Tom 5'), defaultVol: -5.5 }
     };
+
+    // Sub-bus filters to tame metallic brass bite and upper-octave woodwind harshness
+    this.brassFilter = new Tone.Filter({
+      frequency: 6800,
+      type: 'lowpass',
+      rolloff: -12
+    });
+    this.brassFilter.connect(this.gains.exploreCore);
+    this.brassFilter.connect(this.gains.battleMusic);
+
+    this.woodwindFilter = new Tone.Filter({
+      frequency: 7600,
+      type: 'lowpass',
+      rolloff: -12
+    });
+    this.woodwindFilter.connect(this.gains.exploreCore);
+    this.woodwindFilter.connect(this.gains.battleMusic);
 
     const samplers = {};
     for (const [instKey, spec] of Object.entries(sampleSpecs)) {
@@ -410,8 +460,14 @@ export class HyruleSequencer {
         const sampler = new Tone.Sampler({ urls, baseUrl: this.soundfontBaseUrl });
         sampler.volume.value = spec.defaultVol;
 
-        // Routing matrix into dynamic stems:
-        if (instKey === 'snare' || instKey === 'tom') {
+        // Routing matrix through tone-shaping filters and dynamic stems:
+        if (instKey === 'trumpet' || instKey === 'trombone' || instKey === 'brassSection') {
+          // Route brass through dedicated anti-glare warmth filter
+          sampler.connect(this.brassFilter);
+        } else if (instKey === 'ocarina' || instKey === 'flute' || instKey === 'tenorSax') {
+          // Route lead woodwinds through smooth roll-off filter
+          sampler.connect(this.woodwindFilter);
+        } else if (instKey === 'snare' || instKey === 'tom') {
           sampler.connect(this.gains.explorePercussion);
           sampler.connect(this.gains.battleMusic);
         } else if (instKey === 'harp') {
@@ -426,26 +482,26 @@ export class HyruleSequencer {
       }
     }
 
-    // Polyphonic Drum Synths for percussion elements
+    // Polyphonic Drum Synths: softened dynamics to prevent harsh clatter
     const kickSynth = new Tone.PolySynth(Tone.MembraneSynth, {
       pitchDecay: 0.05,
       octaves: 4,
       oscillator: { type: 'sine' },
-      envelope: { attack: 0.001, decay: 0.2, sustain: 0, release: 0.1 }
+      envelope: { attack: 0.001, decay: 0.22, sustain: 0, release: 0.12 }
     });
-    kickSynth.volume.value = -6;
+    kickSynth.volume.value = -7.0;
     kickSynth.connect(this.gains.explorePercussion);
     kickSynth.connect(this.gains.battleMusic);
 
     const hihatSynth = new Tone.PolySynth(Tone.MetalSynth, {
-      frequency: 200,
-      envelope: { attack: 0.001, decay: 0.05, release: 0.05 },
-      harmonicity: 5.1,
-      modulationIndex: 32,
-      resonance: 4000,
-      octaves: 1.5
+      frequency: 180,
+      envelope: { attack: 0.001, decay: 0.04, release: 0.04 },
+      harmonicity: 3.2,
+      modulationIndex: 10,
+      resonance: 1400,
+      octaves: 1.2
     });
-    hihatSynth.volume.value = -22;
+    hihatSynth.volume.value = -26;
     hihatSynth.connect(this.gains.explorePercussion);
     hihatSynth.connect(this.gains.battleMusic);
 
@@ -585,7 +641,9 @@ export class HyruleSequencer {
     } else {
       if (sampler && sampler.loaded) {
         try {
-          sampler.triggerAttackRelease(note.name, dur, safeTime, vel);
+          // Acoustic register scaling for piercing high notes (e.g. ocarina/woodwinds in octaves 6-7)
+          const scaledVel = (note.midi && note.midi > 84) ? vel * 0.82 : vel;
+          sampler.triggerAttackRelease(note.name, dur, safeTime, scaledVel);
         } catch (e) {}
       }
     }
@@ -906,6 +964,86 @@ export class HyruleSequencer {
       this.soundRack.releaseAll();
     }
   }
+
+  // --- Real-time Interactive Mixer Controls ---
+
+  setMasterVolume(valDb) {
+    if (this.masterVolume) {
+      this.masterVolume.volume.value = Math.max(-36, Math.min(6, valDb));
+    }
+  }
+
+  setMasterWarmth(cutoffHz) {
+    if (this.masterWarmthFilter) {
+      this.masterWarmthFilter.frequency.value = Math.max(4000, Math.min(20000, cutoffHz));
+    }
+  }
+
+  setMasterTreble(trebleDb) {
+    if (this.masterEQ) {
+      this.masterEQ.high.value = Math.max(-14, Math.min(4, trebleDb));
+    }
+  }
+
+  setMasterReverbWet(wetRatio) {
+    if (this.masterReverb) {
+      this.masterReverb.wet.value = Math.max(0, Math.min(0.8, wetRatio));
+    }
+  }
+
+  setMixerPreset(presetName) {
+    switch (presetName) {
+      case 'n64': // Authentic N64 Warmth (Default & Recommended)
+        this.setMasterWarmth(11500);
+        this.setMasterTreble(-4.0);
+        this.setMasterReverbWet(0.22);
+        this.setMasterVolume(-2.5);
+        if (this.masterEQ) {
+          this.masterEQ.low.value = 2.2;
+          this.masterEQ.mid.value = -1.2;
+        }
+        break;
+      case 'hall': // Concert Hall
+        this.setMasterWarmth(10000);
+        this.setMasterTreble(-5.5);
+        this.setMasterReverbWet(0.36);
+        this.setMasterVolume(-3.0);
+        if (this.masterEQ) {
+          this.masterEQ.low.value = 3.0;
+          this.masterEQ.mid.value = -1.5;
+        }
+        break;
+      case 'retro': // Vintage CRT / TV Speaker Warmth
+        this.setMasterWarmth(8500);
+        this.setMasterTreble(-6.0);
+        this.setMasterReverbWet(0.16);
+        this.setMasterVolume(-2.0);
+        if (this.masterEQ) {
+          this.masterEQ.low.value = 1.5;
+          this.masterEQ.mid.value = 0.0;
+        }
+        break;
+      case 'bright': // Crisp Studio
+        this.setMasterWarmth(15500);
+        this.setMasterTreble(-1.5);
+        this.setMasterReverbWet(0.18);
+        this.setMasterVolume(-3.5);
+        if (this.masterEQ) {
+          this.masterEQ.low.value = 1.8;
+          this.masterEQ.mid.value = -0.8;
+        }
+        break;
+    }
+  }
+
+  getMixerSettings() {
+    return {
+      volume: this.masterVolume ? this.masterVolume.volume.value : -2.5,
+      warmth: this.masterWarmthFilter ? this.masterWarmthFilter.frequency.value : 11500,
+      treble: this.masterEQ ? this.masterEQ.high.value : -4.0,
+      reverbWet: this.masterReverb ? this.masterReverb.wet.value : 0.22
+    };
+  }
 }
 
 // Singleton instance for global page lifecycle
@@ -975,3 +1113,21 @@ export async function changeGameMode(newMode) {
 
   sequencer.setState(newMode);
 }
+
+export function setMixerParameter(param, value) {
+  if (!sequencer) return;
+  if (param === 'volume') sequencer.setMasterVolume(value);
+  else if (param === 'warmth') sequencer.setMasterWarmth(value);
+  else if (param === 'treble') sequencer.setMasterTreble(value);
+  else if (param === 'reverb') sequencer.setMasterReverbWet(value);
+}
+
+export function setMixerPreset(presetName) {
+  if (!sequencer) return;
+  sequencer.setMixerPreset(presetName);
+}
+
+export function getMixerSettings() {
+  return sequencer ? sequencer.getMixerSettings() : null;
+}
+

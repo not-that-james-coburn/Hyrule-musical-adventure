@@ -32,8 +32,70 @@
                 <span class="triforce">▲</span>
                 <span class="brand-text">HYRULE FIELD</span>
             </div>
-            <div id="loading-indicator" class="status-pill loading">⏳ Loading...</div>
+            <div class="header-actions">
+                <button id="mixer-toggle-btn" class="mixer-toggle-btn" aria-label="Toggle Sound Mixer" title="Audio Mixer">
+                    🎛️ <span class="mixer-btn-label">SOUND</span>
+                </button>
+                <div id="loading-indicator" class="status-pill loading">⏳ Loading...</div>
+            </div>
         </header>
+
+        <!-- Nintendo Sound Mixer Drawer (Collapsible) -->
+        <section id="mixer-drawer" class="mixer-drawer" style="display: none;" aria-label="Audio Mixer Panel">
+            <div class="mixer-inner">
+                <div class="mixer-header-row">
+                    <span class="mixer-title">🎛️ N64 DSP SOUND MIXER</span>
+                    <button id="mixer-close-btn" class="mixer-close-btn" aria-label="Close Mixer">✕</button>
+                </div>
+
+                <!-- Preset Quick Buttons -->
+                <div class="mixer-presets">
+                    <button class="preset-btn active" data-preset="n64">🏰 N64 Warmth</button>
+                    <button class="preset-btn" data-preset="hall">🎻 Concert Hall</button>
+                    <button class="preset-btn" data-preset="retro">📻 Vintage CRT</button>
+                    <button class="preset-btn" data-preset="bright">✨ Crisp Studio</button>
+                </div>
+
+                <!-- Sliders Grid -->
+                <div class="mixer-controls-grid">
+                    <div class="mixer-control">
+                        <div class="control-label-row">
+                            <span class="ctrl-name">Warmth (N64 Lowpass)</span>
+                            <span id="val-warmth" class="ctrl-val">11.5 kHz</span>
+                        </div>
+                        <input id="slider-warmth" type="range" min="6000" max="18000" step="250" value="11500" class="nintendo-slider">
+                        <span class="ctrl-hint">Filters digital sample aliasing</span>
+                    </div>
+
+                    <div class="mixer-control">
+                        <div class="control-label-row">
+                            <span class="ctrl-name">Treble / Shrill Cut</span>
+                            <span id="val-treble" class="ctrl-val">-4.0 dB</span>
+                        </div>
+                        <input id="slider-treble" type="range" min="-10" max="2" step="0.5" value="-4.0" class="nintendo-slider">
+                        <span class="ctrl-hint">Reduces high-octave harshness</span>
+                    </div>
+
+                    <div class="mixer-control">
+                        <div class="control-label-row">
+                            <span class="ctrl-name">Reverb Ambiance</span>
+                            <span id="val-reverb" class="ctrl-val">22%</span>
+                        </div>
+                        <input id="slider-reverb" type="range" min="0" max="50" step="1" value="22" class="nintendo-slider">
+                        <span class="ctrl-hint">Concert hall acoustic space</span>
+                    </div>
+
+                    <div class="mixer-control">
+                        <div class="control-label-row">
+                            <span class="ctrl-name">Master Volume</span>
+                            <span id="val-volume" class="ctrl-val">-2.5 dB</span>
+                        </div>
+                        <input id="slider-volume" type="range" min="-18" max="0" step="0.5" value="-2.5" class="nintendo-slider">
+                        <span class="ctrl-hint">Master bus output level</span>
+                    </div>
+                </div>
+            </div>
+        </section>
 
         <!-- Compact Nintendo HUD Strip -->
         <section class="hud-bar">

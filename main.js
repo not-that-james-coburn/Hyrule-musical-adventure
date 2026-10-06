@@ -7,7 +7,10 @@ import {
   getStreamNotes,
   whenAudioLoaded,
   sequencer,
-  HyruleSequencer
+  HyruleSequencer,
+  setMixerParameter,
+  setMixerPreset,
+  getMixerSettings
 } from './sequencer.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -24,6 +27,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const cueMeasureCounterEl = document.getElementById('cue-measure-counter');
   const canvas = document.getElementById('note-stream-canvas');
   const ctx = canvas ? canvas.getContext('2d') : null;
+
+  // Mixer DOM Elements
+  const mixerToggleBtn = document.getElementById('mixer-toggle-btn');
+  const mixerCloseBtn = document.getElementById('mixer-close-btn');
+  const mixerDrawer = document.getElementById('mixer-drawer');
+  const presetButtons = document.querySelectorAll('.preset-btn');
+  const sliderWarmth = document.getElementById('slider-warmth');
+  const sliderTreble = document.getElementById('slider-treble');
+  const sliderReverb = document.getElementById('slider-reverb');
+  const sliderVolume = document.getElementById('slider-volume');
+  const valWarmth = document.getElementById('val-warmth');
+  const valTreble = document.getElementById('val-treble');
+  const valReverb = document.getElementById('val-reverb');
+  const valVolume = document.getElementById('val-volume');
 
   let hasStarted = false;
 
@@ -84,6 +101,91 @@ document.addEventListener('DOMContentLoaded', () => {
       // Refresh button active highlights
       modeButtons.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
+    });
+  });
+
+  // 4. Mixer Drawer Toggle & Controls
+  if (mixerToggleBtn && mixerDrawer) {
+    mixerToggleBtn.addEventListener('click', () => {
+      const isHidden = mixerDrawer.style.display === 'none';
+      mixerDrawer.style.display = isHidden ? 'block' : 'none';
+      mixerToggleBtn.classList.toggle('active', isHidden);
+    });
+  }
+
+  if (mixerCloseBtn && mixerDrawer) {
+    mixerCloseBtn.addEventListener('click', () => {
+      mixerDrawer.style.display = 'none';
+      if (mixerToggleBtn) mixerToggleBtn.classList.remove('active');
+    });
+  }
+
+  // Real-time Slider Adjustments
+  if (sliderWarmth) {
+    sliderWarmth.addEventListener('input', (e) => {
+      const hz = parseFloat(e.target.value);
+      setMixerParameter('warmth', hz);
+      if (valWarmth) valWarmth.innerText = (hz >= 1000 ? (hz / 1000).toFixed(1) + ' kHz' : hz + ' Hz');
+      presetButtons.forEach(b => b.classList.remove('active'));
+    });
+  }
+
+  if (sliderTreble) {
+    sliderTreble.addEventListener('input', (e) => {
+      const db = parseFloat(e.target.value);
+      setMixerParameter('treble', db);
+      if (valTreble) valTreble.innerText = (db > 0 ? '+' : '') + db.toFixed(1) + ' dB';
+      presetButtons.forEach(b => b.classList.remove('active'));
+    });
+  }
+
+  if (sliderReverb) {
+    sliderReverb.addEventListener('input', (e) => {
+      const pct = parseFloat(e.target.value);
+      setMixerParameter('reverb', pct / 100);
+      if (valReverb) valReverb.innerText = pct + '%';
+      presetButtons.forEach(b => b.classList.remove('active'));
+    });
+  }
+
+  if (sliderVolume) {
+    sliderVolume.addEventListener('input', (e) => {
+      const db = parseFloat(e.target.value);
+      setMixerParameter('volume', db);
+      if (valVolume) valVolume.innerText = (db > 0 ? '+' : '') + db.toFixed(1) + ' dB';
+      presetButtons.forEach(b => b.classList.remove('active'));
+    });
+  }
+
+  // Mixer Presets
+  presetButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const preset = btn.getAttribute('data-preset');
+      setMixerPreset(preset);
+      presetButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      // Sync slider UI controls with newly active preset
+      const settings = getMixerSettings();
+      if (settings) {
+        if (sliderWarmth) {
+          sliderWarmth.value = settings.warmth;
+          if (valWarmth) valWarmth.innerText = (settings.warmth >= 1000 ? (settings.warmth / 1000).toFixed(1) + ' kHz' : settings.warmth + ' Hz');
+        }
+        if (sliderTreble) {
+          sliderTreble.value = settings.treble;
+          if (valTreble) valTreble.innerText = (settings.treble > 0 ? '+' : '') + Number(settings.treble).toFixed(1) + ' dB';
+        }
+        if (sliderReverb) {
+          const pct = Math.round(settings.reverbWet * 100);
+          sliderReverb.value = pct;
+          if (valReverb) valReverb.innerText = pct + '%';
+        }
+        if (sliderVolume) {
+          sliderVolume.value = settings.volume;
+          if (valVolume) valVolume.innerText = (settings.volume > 0 ? '+' : '') + Number(settings.volume).toFixed(1) + ' dB';
+        }
+      }
     });
   });
 
