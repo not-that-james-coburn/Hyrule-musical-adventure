@@ -1,5 +1,14 @@
 import * as Tone from 'tone';
-import { changeGameMode, getCurrentPlaybackState, currentBlockStartTransportSec, currentBlockDurationSec, whenAudioLoaded } from './sequencer.js';
+import {
+  changeGameMode,
+  getCurrentPlaybackState,
+  getPendingStateChange,
+  currentBlockStartTransportSec,
+  currentBlockDurationSec,
+  whenAudioLoaded,
+  sequencer,
+  HyruleSequencer
+} from './sequencer.js';
 
 // Wire up the HTML buttons into your Tone.js execution environment
 document.addEventListener('DOMContentLoaded', () => {
@@ -9,30 +18,32 @@ document.addEventListener('DOMContentLoaded', () => {
   const loadingIndicator = document.getElementById('loading-indicator');
 
   // Disable control buttons initially while audio buffers load
-  buttons.forEach(btn => btn.disabled = true);
+  buttons.forEach(btn => (btn.disabled = true));
 
-  whenAudioLoaded().then(() => {
-    if (loadingIndicator) {
-      loadingIndicator.innerText = "✓ Soundfont Audio Ready";
-      loadingIndicator.classList.add('loaded');
-      loadingIndicator.classList.remove('error');
-    }
-    buttons.forEach(btn => btn.disabled = false);
-  }).catch((err) => {
-    console.error("Error loading soundfont samples:", err);
-    if (loadingIndicator) {
-      loadingIndicator.innerText = "❌ Failed to load audio samples. Please check connection and refresh.";
-      loadingIndicator.classList.add('error');
-      loadingIndicator.classList.remove('loaded');
-    }
-    buttons.forEach(btn => btn.disabled = true);
-  });
+  whenAudioLoaded()
+    .then(() => {
+      if (loadingIndicator) {
+        loadingIndicator.innerText = "✓ Soundfont Audio Ready";
+        loadingIndicator.classList.add('loaded');
+        loadingIndicator.classList.remove('error');
+      }
+      buttons.forEach(btn => (btn.disabled = false));
+    })
+    .catch(err => {
+      console.error("Error loading soundfont samples:", err);
+      if (loadingIndicator) {
+        loadingIndicator.innerText = "❌ Failed to load audio samples. Please check connection and refresh.";
+        loadingIndicator.classList.add('error');
+        loadingIndicator.classList.remove('loaded');
+      }
+      buttons.forEach(btn => (btn.disabled = true));
+    });
 
   buttons.forEach(btn => {
     btn.addEventListener('click', () => {
       if (btn.disabled) return;
       const selectedMode = btn.getAttribute('data-mode');
-      
+
       // 1. Invoke function to signal change to Tone.js
       changeGameMode(selectedMode);
 
@@ -43,6 +54,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   window.Tone = Tone; // Expose Tone for debugging
+  window.sequencer = sequencer; // Expose sequencer for debugging
+  window.HyruleSequencer = HyruleSequencer;
 
   // Smooth, high-performance rendering loop for the 8-bar countdown clock progress bar
   function renderProgressBar() {
@@ -53,12 +66,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
       fillEl.style.width = `${Math.min(Math.max(progressPercent, 0), 100)}%`;
 
-      // Dynamically align text styling to update users when state changes
       const currentPlaybackState = getCurrentPlaybackState();
-      if (currentPlaybackState === 'EXPLORATION') {
+      const pendingState = getPendingStateChange();
+
+      // Dynamically align text styling to update users when state changes or is pending
+      if (pendingState) {
+        if (pendingState === 'BATTLE') {
+          displayEl.innerText = "⚔️ Combat (Pending Phrase Downbeat...)";
+          displayEl.className = "status-value mode-pending";
+          fillEl.style.backgroundColor = "var(--accent-red)";
+        } else if (pendingState === 'EXPLORATION') {
+          displayEl.innerText = "☀️ Exploration (Pending Victory Flourish...)";
+          displayEl.className = "status-value mode-pending";
+          fillEl.style.backgroundColor = "var(--accent-green)";
+        } else {
+          displayEl.innerText = `${pendingState} (Pending Phrase Downbeat...)`;
+          displayEl.className = "status-value mode-pending";
+        }
+      } else if (currentPlaybackState === 'EXPLORATION') {
         displayEl.innerText = "Exploration (Day)";
         displayEl.className = "status-value mode-exploration";
         fillEl.style.backgroundColor = "var(--accent-green)";
+      } else if (currentPlaybackState === 'IDLE') {
+        displayEl.innerText = "🛡️ Idle (Standing Still)";
+        displayEl.className = "status-value mode-idle";
+        fillEl.style.backgroundColor = "#facc15";
       } else if (currentPlaybackState === 'QUIET') {
         displayEl.innerText = "Quiet (Night/Rest)";
         displayEl.className = "status-value mode-quiet";
@@ -77,7 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
         fillEl.style.backgroundColor = "var(--accent-red)";
       }
     }
-    
+
     requestAnimationFrame(renderProgressBar);
   }
 

@@ -1,25 +1,17 @@
 import * as Tone from 'tone';
 
-let midiData = null;
-let manifest = null;
-
-// 1. Core State & Timing Configuration
-let PPQ = 960;
-const BARS_PER_BLOCK = 8;
-const CROSSFADE_TIME = 0.8; // Duration in seconds for smooth crossfade transition
-
-let currentPlaybackState = 'EXPLORATION'; 
-let nextPlaybackState = 'EXPLORATION';
-let activeScheduledEvents = []; // Holds Tone.Transport event IDs for clean clearing
-let currentExplorationBlockIndex = null;
-let currentBattleBlockIndex = 1; // Start battle sequence at index 1 (Battle Block 2) on immediate override
-let introHasPlayed = false;
-
 // Track active block info for progress bar calculations (in Transport seconds)
-export let currentBlockDurationSec = 13.333;
+export let currentBlockDurationSec = 12.8;
 export let currentBlockStartTransportSec = 0;
 
-// 2. Absolute Measure-Based Calibration Mapping (blockMap)
+// Helper to convert MIDI pitch number to note name (e.g. 60 -> "C4")
+function midiToNoteName(midi) {
+  const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'B'];
+  const octave = Math.floor(midi / 12) - 1;
+  return noteNames[midi % 12] + octave;
+}
+
+// 1. Measure-Based Block Mapping matching hyrule_field_midi.json (8 bars each)
 const blockMap = {
   INTRO: { startBar: 0, endBar: 17 },
 
@@ -53,146 +45,212 @@ const blockMap = {
   ]
 };
 
-// Helper to convert MIDI pitch number to note name (e.g. 60 -> "C4")
-function midiToNoteName(midi) {
-  const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-  const octave = Math.floor(midi / 12) - 1;
-  return noteNames[midi % 12] + octave;
-}
+export class HyruleSequencer {
+  constructor() {
+    // App State tracking
+    this.currentState = 'EXPLORATION'; // Options: 'EXPLORATION', 'IDLE', 'BATTLE', 'QUIET', 'BATTLE_INTRO', 'BATTLE_OUTRO'
+    this.pendingStateChange = null;
 
-// Build instrument sample mappings from manifest.json
-function buildSamplerUrls(filterFn) {
-  const urls = {};
-  if (!manifest) return urls;
-  for (const [key, item] of Object.entries(manifest)) {
-    if (filterFn(key, item)) {
-      const noteName = midiToNoteName(item.pitch);
-      const relativePath = item.file.startsWith('soundfont/') ? item.file.replace('soundfont/', '') : item.file;
-      urls[noteName] = relativePath;
-    }
-  }
-  return urls;
-}
+    // Timing constants matching Koji Kondo's MIDI design (150 BPM main theme, 8 bars per block)
+    this.BPM = 150;
+    this.BEATS_PER_BAR = 4;
+    this.BARS_PER_BLOCK = 8;
+    this.BEATS_PER_BLOCK = this.BEATS_PER_BAR * this.BARS_PER_BLOCK; // 32 Beats (12.8s)
 
-// 3. Master Audio Output Pipeline & Segregated Volume Nodes
-let masterLimiter;
-let masterReverb;
-let melodyVolumeNode = null;
-let percussionVolumeNode = null;
-let soundRack = null;
-let musicalBlockPart = null;
-let engineInitialized = false;
-let initPromise = null;
+    // Audio routing infrastructure
+    this.players = {};
+    this.gains = {
+      exploreCore: new Tone.Gain(1),
+      explorePercussion: new Tone.Gain(1),
+      idleHarp: new Tone.Gain(0),
+      battleMusic: new Tone.Gain(0)
+    };
 
-async function detectAndInitAudioEngine() {
-  if (engineInitialized) return;
+    this.midiData = null;
+    this.manifest = null;
+    this.PPQ = 960;
+    this.soundRack = null;
+    this.musicalBlockPart = null;
+    this.phraseScheduler = null;
 
-  masterLimiter = new Tone.Limiter(-1).toDestination();
-  masterReverb = new Tone.Reverb({ decay: 2.2, wet: 0.2 }).connect(masterLimiter);
+    this.explorationCueSequenceIndex = 0;
+    this.currentExplorationBlockIndex = null;
+    this.currentBattleBlockIndex = 0;
 
-  // Initialize segregated volume nodes connected to masterReverb
-  melodyVolumeNode = new Tone.Volume(0).connect(masterReverb);
-  percussionVolumeNode = new Tone.Volume(0).connect(masterReverb);
+    this.currentBlockStartTransportSec = 0;
+    this.currentBlockDurationSec = 12.8;
 
-  const envBase = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) || './';
-  const cleanBase = envBase.endsWith('/') ? envBase : envBase + '/';
-
-  let soundfontBaseUrl = `${cleanBase}soundfont/`;
-
-  const manifestCandidateUrls = [
-    `${cleanBase}soundfont/`,
-    `${cleanBase}public/soundfont/`,
-    './soundfont/',
-    './public/soundfont/'
-  ];
-
-  for (const candidate of manifestCandidateUrls) {
-    try {
-      const res = await fetch(`${candidate}manifest.json`);
-      if (res.ok) {
-        soundfontBaseUrl = candidate;
-        manifest = await res.json();
-        break;
-      }
-    } catch (e) {
-      // ignore
-    }
+    this.isInitialized = false;
+    this.initPromise = null;
   }
 
-  const midiCandidateUrls = [
-    `${cleanBase}hyrule_field_midi.json`,
-    `${cleanBase}public/hyrule_field_midi.json`,
-    './hyrule_field_midi.json',
-    './public/hyrule_field_midi.json'
-  ];
+  async init() {
+    if (this.isInitialized) return;
+    if (this.initPromise) return this.initPromise;
 
-  for (const url of midiCandidateUrls) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) {
-        midiData = await res.json();
-        if (midiData && midiData.header && midiData.header.ppq) {
-          PPQ = midiData.header.ppq;
+    this.initPromise = (async () => {
+      // Configure global Transport timeline
+      const transport = Tone.getTransport();
+      transport.bpm.value = this.BPM;
+      transport.timeSignature = [4, 4];
+
+      // 1. Output Pipeline: Reverb + Master Limiter
+      this.masterLimiter = new Tone.Limiter(-1).toDestination();
+      this.masterReverb = new Tone.Reverb({ decay: 2.2, wet: 0.2 }).connect(this.masterLimiter);
+
+      // Connect localized gains to master reverb
+      this.gains.exploreCore.connect(this.masterReverb);
+      this.gains.explorePercussion.connect(this.masterReverb);
+      this.gains.idleHarp.connect(this.masterReverb);
+      this.gains.battleMusic.connect(this.masterReverb);
+
+      // 2. Load Assets (manifest + MIDI data)
+      await this.loadProjectAssets();
+
+      // 3. Build SoundFont Rack & Instruments
+      this.soundRack = this.createSoundfontRack();
+
+      // 4. Single continuous Part for triggering scheduled MIDI note events
+      this.musicalBlockPart = new Tone.Part((time, noteEvent) => {
+        const sampler = this.getSamplerForTrack(noteEvent.trIdx);
+        this.triggerSafeNote(sampler, noteEvent, noteEvent.duration, time);
+      }, []).start(0);
+
+      // 5. Phase-Locking Clock Loop: fires precisely on the downbeat of every 8-measure segment block
+      this.phraseScheduler = new Tone.Loop((time) => {
+        this.onPhraseDownbeat(time);
+      }, `${this.BARS_PER_BLOCK}m`).start(0);
+
+      // Wait for soundfont samples to finish buffering in browser
+      await Tone.loaded();
+
+      this.isInitialized = true;
+    })();
+
+    return this.initPromise;
+  }
+
+  async loadProjectAssets() {
+    const envBase = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) || './';
+    const cleanBase = envBase.endsWith('/') ? envBase : envBase + '/';
+
+    const manifestCandidateUrls = [
+      `${cleanBase}soundfont/`,
+      `${cleanBase}public/soundfont/`,
+      './soundfont/',
+      './public/soundfont/'
+    ];
+
+    for (const candidate of manifestCandidateUrls) {
+      try {
+        const res = await fetch(`${candidate}manifest.json`);
+        if (res.ok) {
+          this.soundfontBaseUrl = candidate;
+          this.manifest = await res.json();
+          break;
         }
-        break;
+      } catch (e) {
+        // ignore
       }
-    } catch (e) {
-      // ignore
+    }
+
+    const midiCandidateUrls = [
+      `${cleanBase}hyrule_field_midi.json`,
+      `${cleanBase}public/hyrule_field_midi.json`,
+      './hyrule_field_midi.json',
+      './public/hyrule_field_midi.json'
+    ];
+
+    for (const url of midiCandidateUrls) {
+      try {
+        const res = await fetch(url);
+        if (res.ok) {
+          this.midiData = await res.json();
+          if (this.midiData && this.midiData.header && this.midiData.header.ppq) {
+            this.PPQ = this.midiData.header.ppq;
+          }
+          break;
+        }
+      } catch (e) {
+        // ignore
+      }
     }
   }
 
-  const sampleSpecs = {
-    piano: { filter: k => k.startsWith('Grand Piano'), defaultVol: -6 },
-    trombone: { filter: k => k.startsWith('Trombone'), defaultVol: -2 },
-    trumpet: { filter: k => k.startsWith('Trumpet'), defaultVol: -2 },
-    brassSection: { filter: k => k.startsWith('Brass Section'), defaultVol: -3 },
-    stringEnsemble: { filter: k => k.startsWith('StrLoop'), defaultVol: -5 },
-    stringEnsemble2: { filter: k => k.startsWith('StrLoop'), defaultVol: -5 },
-    cello: { filter: k => k.startsWith('Cello'), defaultVol: -4 },
-    doubleBass: { filter: k => k.startsWith('Double Bass'), defaultVol: -3 },
-    pickBass: { filter: k => k.startsWith('Pick Bass'), defaultVol: -2 },
-    flute: { filter: k => k.startsWith('Flute'), defaultVol: -3 },
-    tenorSax: { filter: k => k.startsWith('Tenor Sax'), defaultVol: -3 },
-    ocarina: { filter: k => k.startsWith('Ocarina'), defaultVol: -2 },
-    harp: { filter: k => k.startsWith('Orchestral Harp'), defaultVol: -4 },
-    accordion: { filter: k => k.startsWith('Accordion'), defaultVol: -5 },
-    marimba: { filter: k => k.startsWith('Marimba'), defaultVol: -3 },
-    vibraphone: { filter: k => k.startsWith('Vibraphone'), defaultVol: -3 },
-    timpani: { filter: k => k.startsWith('Timpani'), defaultVol: -2 },
-    snare: { filter: k => k.startsWith('Standard Snare 3') || k.startsWith('Jazz Snare'), defaultVol: -3 },
-    tom: { filter: k => k.startsWith('Standard Tom 5'), defaultVol: -3 }
-  };
-
-  const sampleUrlMaps = {};
-  for (const [instKey, spec] of Object.entries(sampleSpecs)) {
-    sampleUrlMaps[instKey] = buildSamplerUrls(spec.filter);
+  buildSamplerUrls(filterFn) {
+    const urls = {};
+    if (!this.manifest) return urls;
+    for (const [key, item] of Object.entries(this.manifest)) {
+      if (filterFn(key, item)) {
+        const noteName = midiToNoteName(item.pitch);
+        const relativePath = item.file.startsWith('soundfont/') ? item.file.replace('soundfont/', '') : item.file;
+        urls[noteName] = relativePath;
+      }
+    }
+    return urls;
   }
 
-  function createSoundfontRack(baseUrl) {
-    const samplers = {};
+  createSoundfontRack() {
+    const sampleSpecs = {
+      piano: { filter: k => k.startsWith('Grand Piano'), defaultVol: -6 },
+      trombone: { filter: k => k.startsWith('Trombone'), defaultVol: -2 },
+      trumpet: { filter: k => k.startsWith('Trumpet'), defaultVol: -2 },
+      brassSection: { filter: k => k.startsWith('Brass Section'), defaultVol: -3 },
+      stringEnsemble: { filter: k => k.startsWith('StrLoop'), defaultVol: -5 },
+      stringEnsemble2: { filter: k => k.startsWith('StrLoop'), defaultVol: -5 },
+      cello: { filter: k => k.startsWith('Cello'), defaultVol: -4 },
+      doubleBass: { filter: k => k.startsWith('Double Bass'), defaultVol: -3 },
+      pickBass: { filter: k => k.startsWith('Pick Bass'), defaultVol: -2 },
+      flute: { filter: k => k.startsWith('Flute'), defaultVol: -3 },
+      tenorSax: { filter: k => k.startsWith('Tenor Sax'), defaultVol: -3 },
+      ocarina: { filter: k => k.startsWith('Ocarina'), defaultVol: -2 },
+      harp: { filter: k => k.startsWith('Orchestral Harp'), defaultVol: -4 },
+      accordion: { filter: k => k.startsWith('Accordion'), defaultVol: -5 },
+      marimba: { filter: k => k.startsWith('Marimba'), defaultVol: -3 },
+      vibraphone: { filter: k => k.startsWith('Vibraphone'), defaultVol: -3 },
+      timpani: { filter: k => k.startsWith('Timpani'), defaultVol: -2 },
+      snare: { filter: k => k.startsWith('Standard Snare 3') || k.startsWith('Jazz Snare'), defaultVol: -3 },
+      tom: { filter: k => k.startsWith('Standard Tom 5'), defaultVol: -3 }
+    };
 
+    const samplers = {};
     for (const [instKey, spec] of Object.entries(sampleSpecs)) {
-      const urls = sampleUrlMaps[instKey];
+      const urls = this.buildSamplerUrls(spec.filter);
       if (Object.keys(urls).length > 0) {
-        const isPerc = instKey === 'snare' || instKey === 'tom';
-        const destNode = isPerc ? percussionVolumeNode : melodyVolumeNode;
-        const sampler = new Tone.Sampler({ urls, baseUrl }).connect(destNode);
+        const sampler = new Tone.Sampler({ urls, baseUrl: this.soundfontBaseUrl });
         sampler.volume.value = spec.defaultVol;
+
+        // Routing matrix into dynamic stems:
+        if (instKey === 'snare' || instKey === 'tom') {
+          sampler.connect(this.gains.explorePercussion);
+          sampler.connect(this.gains.battleMusic);
+        } else if (instKey === 'harp') {
+          sampler.connect(this.gains.idleHarp);
+          sampler.connect(this.gains.exploreCore);
+          sampler.connect(this.gains.battleMusic);
+        } else {
+          sampler.connect(this.gains.exploreCore);
+          sampler.connect(this.gains.battleMusic);
+        }
         samplers[instKey] = sampler;
       }
     }
 
-    // Fallback synths for percussive elements without soundfont samples (kick, hi-hat)
+    // Drum synths for percussion elements without soundfont note samples
     const kickSynth = new Tone.MembraneSynth({
       pitchDecay: 0.05, octaves: 4, oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay: 0.2, sustain: 0, release: 0.1 }
-    }).connect(percussionVolumeNode);
+    });
     kickSynth.volume.value = -6;
+    kickSynth.connect(this.gains.explorePercussion);
+    kickSynth.connect(this.gains.battleMusic);
 
     const hihatSynth = new Tone.MetalSynth({
       frequency: 200, envelope: { attack: 0.001, decay: 0.05, release: 0.05 },
       harmonicity: 5.1, modulationIndex: 32, resonance: 4000, octaves: 1.5
-    }).connect(percussionVolumeNode);
+    });
     hihatSynth.volume.value = -22;
+    hihatSynth.connect(this.gains.explorePercussion);
+    hihatSynth.connect(this.gains.battleMusic);
 
     function releaseAll() {
       Object.values(samplers).forEach(s => {
@@ -208,403 +266,369 @@ async function detectAndInitAudioEngine() {
     };
   }
 
-  soundRack = createSoundfontRack(soundfontBaseUrl);
+  getInstrumentKeyForTrack(trackIndex) {
+    if (!this.midiData || !this.midiData.tracks) return 'piano';
+    const tr = this.midiData.tracks[trackIndex];
+    if (!tr) return 'piano';
 
-  // Single global Tone.Part linked to instruments
-  musicalBlockPart = new Tone.Part((time, noteEvent) => {
-    const sampler = getSamplerForTrack(soundRack, noteEvent.trIdx);
-    triggerSafeNote(soundRack, sampler, noteEvent, noteEvent.duration, time);
-  }, []).start(0);
+    const channel = tr.channel;
+    if (channel === 9 || (tr.instrument && tr.instrument.family === 'drums')) return 'percussion';
 
-  engineInitialized = true;
-}
+    const instNumber = tr.instrument ? tr.instrument.number : 0;
+    const instName = (tr.instrument ? tr.instrument.name : '').toLowerCase();
 
-// Helper to resolve the correct instrument key for a track based on track and channel metadata
-function getInstrumentKeyForTrack(trackIndex) {
-  if (!midiData || !midiData.tracks) return 'piano';
-  const tr = midiData.tracks[trackIndex];
-  if (!tr) return 'piano';
-
-  const channel = tr.channel;
-  if (channel === 9 || (tr.instrument && tr.instrument.family === 'drums')) return 'percussion';
-
-  const instNumber = tr.instrument ? tr.instrument.number : 0;
-  const instName = (tr.instrument ? tr.instrument.name : '').toLowerCase();
-
-  // If track has a specific non-piano instrument definition, map it directly
-  if (instNumber !== 0 && instName) {
-    if (instName.includes('trombone')) return 'trombone';
-    if (instName.includes('trumpet')) return 'trumpet';
-    if (instName.includes('brass section') || instName.includes('brass')) return 'brassSection';
-    if (instName.includes('string ensemble 2')) return 'stringEnsemble2';
-    if (instName.includes('string') || instName.includes('ensemble')) return 'stringEnsemble';
-    if (instName.includes('contrabass')) return 'doubleBass';
-    if (instName.includes('tenor sax') || instName.includes('sax')) return 'tenorSax';
-    if (instName.includes('flute')) return 'flute';
-    if (instName.includes('ocarina')) return 'ocarina';
-    if (instName.includes('harp')) return 'harp';
-    if (instName.includes('reed organ') || instName.includes('organ') || instName.includes('accordion')) return 'accordion';
-    if (instName.includes('electric bass') || instName.includes('pick bass') || instName.includes('bass')) return 'pickBass';
-    if (instName.includes('marimba')) return 'marimba';
-    if (instName.includes('vibraphone')) return 'vibraphone';
-    if (instName.includes('timpani')) return 'timpani';
-  }
-
-  // Channel fallbacks when track instrument is default 0 (Acoustic Grand Piano)
-  switch (channel) {
-    case 0: return 'trombone';
-    case 1: return 'trumpet';
-    case 2: return 'brassSection';
-    case 3: return 'stringEnsemble';
-    case 4: return 'tenorSax';
-    case 5: return 'flute';
-    case 6: return 'harp';
-    case 7: return 'accordion';
-    case 8: return 'pickBass';
-    case 10: return 'marimba';
-    case 11: return 'ocarina';
-    case 12: return 'vibraphone';
-    case 13: return 'stringEnsemble';
-    case 14: return 'timpani';
-    case 15: return 'doubleBass';
-    default: return 'piano';
-  }
-}
-
-function getSamplerForTrack(rack, trackIndex) {
-  const key = getInstrumentKeyForTrack(trackIndex);
-  if (key === 'percussion') return 'percussion';
-  return rack ? (rack.samplers[key] || rack.samplers.piano) : null;
-}
-
-// Helper to trigger note on sampler / synth safely without throwing if buffer is unready
-function triggerSafeNote(rack, sampler, note, durationSec, time) {
-  if (!rack) return;
-  const now = Tone.now();
-  let safeTime = Math.max(time, now);
-
-  if (sampler === 'percussion') {
-    const midiPitch = note.midi;
-    // Percussion note mapping for General MIDI drum channel (Channel 9)
-    if (midiPitch === 35 || midiPitch === 36) { // Acoustic / Electric Bass Drum (Kick)
-      const lastTime = rack.kickSynth._lastTriggerTime || 0;
-      safeTime = Math.max(safeTime, lastTime + 0.002);
-      rack.kickSynth._lastTriggerTime = safeTime;
-      rack.kickSynth.triggerAttackRelease('C1', durationSec, safeTime, note.velocity);
-    } else if (midiPitch === 38 || midiPitch === 40) { // Acoustic / Electric Snare Drum
-      const snareSampler = rack.samplers.snare;
-      if (snareSampler && snareSampler.loaded) {
-        snareSampler.triggerAttackRelease('C4', durationSec, safeTime, note.velocity);
-      }
-    } else if (midiPitch === 42 || midiPitch === 44) { // Closed Hi-Hat / Pedal Hi-Hat
-      const lastTime = rack.hihatSynth._lastTriggerTime || 0;
-      safeTime = Math.max(safeTime, lastTime + 0.002);
-      rack.hihatSynth._lastTriggerTime = safeTime;
-      rack.hihatSynth.triggerAttackRelease(durationSec, safeTime, note.velocity * 0.7);
-    } else if (midiPitch >= 41 && midiPitch <= 50) { // Toms
-      const tomSampler = rack.samplers.tom;
-      if (tomSampler && tomSampler.loaded) {
-        tomSampler.triggerAttackRelease('C4', durationSec, safeTime, note.velocity);
-      } else if (rack.samplers.timpani && rack.samplers.timpani.loaded) {
-        rack.samplers.timpani.triggerAttackRelease('D3', durationSec, safeTime, note.velocity);
-      }
-    } else { // Fallback snare or tom for other percussion triggers
-      const snareSampler = rack.samplers.snare;
-      if (snareSampler && snareSampler.loaded) {
-        snareSampler.triggerAttackRelease('C4', durationSec, safeTime, note.velocity);
-      }
+    if (instNumber !== 0 && instName) {
+      if (instName.includes('trombone')) return 'trombone';
+      if (instName.includes('trumpet')) return 'trumpet';
+      if (instName.includes('brass section') || instName.includes('brass')) return 'brassSection';
+      if (instName.includes('string ensemble 2')) return 'stringEnsemble2';
+      if (instName.includes('string') || instName.includes('ensemble')) return 'stringEnsemble';
+      if (instName.includes('contrabass')) return 'doubleBass';
+      if (instName.includes('tenor sax') || instName.includes('sax')) return 'tenorSax';
+      if (instName.includes('flute')) return 'flute';
+      if (instName.includes('ocarina')) return 'ocarina';
+      if (instName.includes('harp')) return 'harp';
+      if (instName.includes('reed organ') || instName.includes('organ') || instName.includes('accordion')) return 'accordion';
+      if (instName.includes('electric bass') || instName.includes('pick bass') || instName.includes('bass')) return 'pickBass';
+      if (instName.includes('marimba')) return 'marimba';
+      if (instName.includes('vibraphone')) return 'vibraphone';
+      if (instName.includes('timpani')) return 'timpani';
     }
-  } else {
-    if (sampler && sampler.loaded) {
-      sampler.triggerAttackRelease(note.name, durationSec, safeTime, note.velocity);
+
+    switch (channel) {
+      case 0: return 'trombone';
+      case 1: return 'trumpet';
+      case 2: return 'brassSection';
+      case 3: return 'stringEnsemble';
+      case 4: return 'tenorSax';
+      case 5: return 'flute';
+      case 6: return 'harp';
+      case 7: return 'accordion';
+      case 8: return 'pickBass';
+      case 10: return 'marimba';
+      case 11: return 'ocarina';
+      case 12: return 'vibraphone';
+      case 13: return 'stringEnsemble';
+      case 14: return 'timpani';
+      case 15: return 'doubleBass';
+      default: return 'piano';
     }
   }
-}
 
-// 4. Scheduling & Dynamic Conductor Engine
-let conductorScheduleId = null;
-let explorationCueSequenceIndex = 0; // 0 = Day Chunk 1, then >= 1 randomized
+  getSamplerForTrack(trackIndex) {
+    const key = this.getInstrumentKeyForTrack(trackIndex);
+    if (key === 'percussion') return 'percussion';
+    return this.soundRack ? (this.soundRack.samplers[key] || this.soundRack.samplers.piano) : null;
+  }
 
-function selectBlockForState(state) {
-  if (state === 'INTRO') {
-    return blockMap.INTRO;
-  }
-  if (state === 'BATTLE_INTRO') {
-    return blockMap.BATTLE_INTRO;
-  }
-  if (state === 'BATTLE_OUTRO') {
-    return blockMap.BATTLE_OUTRO;
-  }
-  if (state === 'BATTLE') {
-    const battleChunks = blockMap.BATTLE;
-    const chosen = battleChunks[currentBattleBlockIndex % battleChunks.length];
-    currentBattleBlockIndex++;
-    return chosen;
-  }
-  if (state === 'QUIET') {
-    const quietChunks = blockMap.QUIET;
-    return quietChunks[Math.floor(Math.random() * quietChunks.length)];
-  }
-  if (state === 'EXPLORATION') {
-    const pool = blockMap.EXPLORATION;
-    if (explorationCueSequenceIndex === 0) {
-      // First exploration cue after intro MUST be Day Chunk 1 (pool[0])
-      explorationCueSequenceIndex = 1;
-      currentExplorationBlockIndex = 0;
-      return pool[0];
+  triggerSafeNote(sampler, note, durationSec, time) {
+    if (!this.soundRack) return;
+    const now = Tone.now();
+    let safeTime = Math.max(time, now);
+
+    if (sampler === 'percussion') {
+      const midiPitch = note.midi;
+      if (midiPitch === 35 || midiPitch === 36) {
+        const lastTime = this.soundRack.kickSynth._lastTriggerTime || 0;
+        safeTime = Math.max(safeTime, lastTime + 0.002);
+        this.soundRack.kickSynth._lastTriggerTime = safeTime;
+        this.soundRack.kickSynth.triggerAttackRelease('C1', durationSec, safeTime, note.velocity);
+      } else if (midiPitch === 38 || midiPitch === 40) {
+        const snareSampler = this.soundRack.samplers.snare;
+        if (snareSampler && snareSampler.loaded) {
+          snareSampler.triggerAttackRelease('C4', durationSec, safeTime, note.velocity);
+        }
+      } else if (midiPitch === 42 || midiPitch === 44) {
+        const lastTime = this.soundRack.hihatSynth._lastTriggerTime || 0;
+        safeTime = Math.max(safeTime, lastTime + 0.002);
+        this.soundRack.hihatSynth._lastTriggerTime = safeTime;
+        this.soundRack.hihatSynth.triggerAttackRelease(durationSec, safeTime, note.velocity * 0.7);
+      } else if (midiPitch >= 41 && midiPitch <= 50) {
+        const tomSampler = this.soundRack.samplers.tom;
+        if (tomSampler && tomSampler.loaded) {
+          tomSampler.triggerAttackRelease('C4', durationSec, safeTime, note.velocity);
+        } else if (this.soundRack.samplers.timpani && this.soundRack.samplers.timpani.loaded) {
+          this.soundRack.samplers.timpani.triggerAttackRelease('D3', durationSec, safeTime, note.velocity);
+        }
+      } else {
+        const snareSampler = this.soundRack.samplers.snare;
+        if (snareSampler && snareSampler.loaded) {
+          snareSampler.triggerAttackRelease('C4', durationSec, safeTime, note.velocity);
+        }
+      }
     } else {
-      // Randomized exploration cues thereafter
-      let availableIndices = pool.map((_, i) => i).filter(i => i !== currentExplorationBlockIndex);
-      if (availableIndices.length === 0) availableIndices = [0];
-      const chosenIdx = availableIndices[Math.floor(Math.random() * availableIndices.length)];
-      currentExplorationBlockIndex = chosenIdx;
+      if (sampler && sampler.loaded) {
+        sampler.triggerAttackRelease(note.name, durationSec, safeTime, note.velocity);
+      }
+    }
+  }
+
+  tickToSeconds(targetTick) {
+    if (!this.midiData || !this.midiData.header || !this.midiData.header.tempos) {
+      return (targetTick / (this.PPQ * (this.BPM / 60)));
+    }
+
+    const sortedTempos = [...this.midiData.header.tempos].sort((a, b) => a.ticks - b.ticks);
+
+    let currentTime = 0.0;
+    let currentTick = 0;
+    let currentBpm = sortedTempos.length > 0 ? sortedTempos[0].bpm : this.BPM;
+
+    for (const t of sortedTempos) {
+      if (t.ticks >= targetTick) break;
+      const deltaTicks = t.ticks - currentTick;
+      const secondsPerTick = (60.0 / currentBpm) / this.PPQ;
+      currentTime += deltaTicks * secondsPerTick;
+      currentTick = t.ticks;
+      currentBpm = t.bpm;
+    }
+
+    const deltaTicks = targetTick - currentTick;
+    const secondsPerTick = (60.0 / currentBpm) / this.PPQ;
+    currentTime += deltaTicks * secondsPerTick;
+
+    return currentTime;
+  }
+
+  /**
+   * Expose clean hook API for UI buttons to switch the state machine mode.
+   */
+  setState(newState) {
+    if (newState === this.currentState && !this.pendingStateChange) return;
+
+    if (newState === 'IDLE' || (this.currentState === 'IDLE' && newState === 'EXPLORATION')) {
+      // MOVEMENT MIX RULES: Execute immediate volume envelope crossfades mid-bar (within 400ms)
+      this.currentState = newState;
+      this.pendingStateChange = null;
+      this.executeMovementCrossfade();
+    } else if (newState === 'BATTLE' || newState === 'EXPLORATION' || newState === 'QUIET') {
+      // COMBAT ENCOUNTER RULES: Defer execution until the master clock loop hits the 8-bar boundary
+      this.pendingStateChange = newState;
+      console.log(`Battle/mode state transition registered (${newState}). Pending phrase boundary break...`);
+    }
+  }
+
+  /**
+   * Mid-bar linear volume tracking for running vs standing still
+   */
+  executeMovementCrossfade() {
+    const now = Tone.now();
+    const fadeTime = 0.4; // Smooth real-time shift time in seconds
+
+    if (this.currentState === 'IDLE') {
+      // Link stops moving: instantly drop active explore rhythms, bring up quiet harps
+      this.gains.explorePercussion.gain.linearRampToValueAtTime(0, now + fadeTime);
+      this.gains.idleHarp.gain.linearRampToValueAtTime(1, now + fadeTime);
+    } else if (this.currentState === 'EXPLORATION') {
+      // Link runs again: immediately dial up exploration layers, mute the quiet harp stem
+      this.gains.explorePercussion.gain.linearRampToValueAtTime(1, now + fadeTime);
+      this.gains.idleHarp.gain.linearRampToValueAtTime(0, now + fadeTime);
+    }
+  }
+
+  /**
+   * Dynamic sequence branching evaluation running at every 8-bar block downbeat marker
+   */
+  handleDeferredTransitions(timelineTime) {
+    const fadeTime = 0.15; // Heroic crossfade transition rate over downbeat
+
+    if (this.pendingStateChange) {
+      if (this.pendingStateChange === 'BATTLE') {
+        // Mute exploration layer nodes on downbeat
+        this.gains.exploreCore.gain.setValueAtTime(1, timelineTime);
+        this.gains.exploreCore.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
+        this.gains.explorePercussion.gain.setValueAtTime(this.currentState === 'IDLE' ? 0 : 1, timelineTime);
+        this.gains.explorePercussion.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
+        this.gains.idleHarp.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
+
+        // Un-mute combat layers seamlessly on the shared beat marker
+        this.gains.battleMusic.gain.setValueAtTime(0, timelineTime);
+        this.gains.battleMusic.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
+
+        this.currentState = 'BATTLE_INTRO';
+        this.pendingStateChange = null;
+      } else if (this.pendingStateChange === 'EXPLORATION') {
+        if (this.currentState === 'BATTLE' || this.currentState === 'BATTLE_INTRO') {
+          // Play battle victory flourish (BATTLE_OUTRO) before resolving to exploration
+          this.currentState = 'BATTLE_OUTRO';
+          this.pendingStateChange = null;
+        } else {
+          this.gains.battleMusic.gain.setValueAtTime(1, timelineTime);
+          this.gains.battleMusic.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
+
+          this.gains.exploreCore.gain.setValueAtTime(0, timelineTime);
+          this.gains.exploreCore.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
+          this.gains.explorePercussion.gain.setValueAtTime(0, timelineTime);
+          this.gains.explorePercussion.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
+          this.gains.idleHarp.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
+
+          this.currentState = 'EXPLORATION';
+          this.pendingStateChange = null;
+        }
+      } else if (this.pendingStateChange === 'QUIET') {
+        this.gains.explorePercussion.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
+        this.gains.battleMusic.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
+        this.gains.idleHarp.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
+        this.gains.exploreCore.gain.linearRampToValueAtTime(0.8, timelineTime + fadeTime);
+
+        this.currentState = 'QUIET';
+        this.pendingStateChange = null;
+      }
+    } else {
+      // Natural chain transitions when an intro or flourish completes its 8-bar block
+      if (this.currentState === 'BATTLE_INTRO') {
+        this.currentState = 'BATTLE';
+      } else if (this.currentState === 'BATTLE_OUTRO') {
+        this.gains.battleMusic.gain.setValueAtTime(1, timelineTime);
+        this.gains.battleMusic.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
+
+        this.gains.exploreCore.gain.setValueAtTime(0, timelineTime);
+        this.gains.exploreCore.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
+        this.gains.explorePercussion.gain.setValueAtTime(0, timelineTime);
+        this.gains.explorePercussion.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
+
+        this.currentState = 'EXPLORATION';
+        this.explorationCueSequenceIndex = 0;
+      }
+    }
+  }
+
+  /**
+   * Realigns voices and cleans old events on every 8-bar downbeat mark
+   */
+  preventSampleDrift(timelineTime) {
+    if (this.soundRack && typeof this.soundRack.releaseAll === 'function') {
+      this.soundRack.releaseAll();
+    }
+
+    if (this.musicalBlockPart && this.musicalBlockPart._events) {
+      const pastCutoff = Math.max(0, timelineTime - 1.0);
+      this.musicalBlockPart._events = this.musicalBlockPart._events.filter(e => e.time >= pastCutoff);
+    }
+  }
+
+  selectBlockForCurrentState() {
+    if (this.currentState === 'BATTLE_INTRO') {
+      return blockMap.BATTLE_INTRO;
+    }
+    if (this.currentState === 'BATTLE_OUTRO') {
+      return blockMap.BATTLE_OUTRO;
+    }
+    if (this.currentState === 'BATTLE') {
+      const battleChunks = blockMap.BATTLE;
+      const chosen = battleChunks[this.currentBattleBlockIndex % battleChunks.length];
+      this.currentBattleBlockIndex++;
+      return chosen;
+    }
+    if (this.currentState === 'QUIET') {
+      const quietChunks = blockMap.QUIET;
+      return quietChunks[Math.floor(Math.random() * quietChunks.length)];
+    }
+
+    // EXPLORATION or IDLE: Pick from 8-bar exploration pool
+    const pool = blockMap.EXPLORATION;
+    if (this.explorationCueSequenceIndex === 0) {
+      this.explorationCueSequenceIndex = 1;
+      this.currentExplorationBlockIndex = 0;
+      return pool[0]; // Always Day Chunk 1 initially
+    } else {
+      let available = pool.map((_, i) => i).filter(i => i !== this.currentExplorationBlockIndex);
+      if (available.length === 0) available = [0];
+      const chosenIdx = available[Math.floor(Math.random() * available.length)];
+      this.currentExplorationBlockIndex = chosenIdx;
       return pool[chosenIdx];
     }
   }
-  return blockMap.INTRO;
-}
 
-function tickToSeconds(targetTick) {
-  if (!midiData || !midiData.header || !midiData.header.tempos) {
-    const bpm = 150;
-    return (targetTick / (PPQ * (bpm / 60)));
-  }
+  scheduleMidiBlock(chosenBlock, startTime) {
+    if (!chosenBlock) return 12.8;
 
-  const sortedTempos = [...midiData.header.tempos].sort((a, b) => a.ticks - b.ticks);
+    const ticksPerBar = 4 * this.PPQ;
+    const startTicks = chosenBlock.startBar * ticksPerBar;
+    const endTicks = chosenBlock.endBar * ticksPerBar;
 
-  let currentTime = 0.0;
-  let currentTick = 0;
-  let currentBpm = sortedTempos.length > 0 ? sortedTempos[0].bpm : 150;
+    const blockStartSec = this.tickToSeconds(startTicks);
+    const blockEndSec = this.tickToSeconds(endTicks);
+    const durationSec = blockEndSec - blockStartSec;
 
-  for (const t of sortedTempos) {
-    if (t.ticks >= targetTick) break;
-    const deltaTicks = t.ticks - currentTick;
-    const secondsPerTick = (60.0 / currentBpm) / PPQ;
-    currentTime += deltaTicks * secondsPerTick;
-    currentTick = t.ticks;
-    currentBpm = t.bpm;
-  }
+    if (!this.midiData || !this.midiData.tracks) return durationSec;
 
-  const deltaTicks = targetTick - currentTick;
-  const secondsPerTick = (60.0 / currentBpm) / PPQ;
-  currentTime += deltaTicks * secondsPerTick;
+    this.midiData.tracks.forEach((track, trIdx) => {
+      const isPercussion = track.channel === 9 || (track.instrument && track.instrument.family === 'drums');
 
-  return currentTime;
-}
+      const notesInBlock = track.notes.filter(note =>
+        note.ticks >= startTicks && note.ticks < endTicks
+      );
 
-function scheduleMidiBlock(chosenBlock, startTime) {
-  if (!chosenBlock) return 0;
+      notesInBlock.forEach((note) => {
+        const noteStartSec = this.tickToSeconds(note.ticks);
+        const relativeNoteTime = noteStartSec - blockStartSec;
+        const noteTime = startTime + relativeNoteTime;
 
-  const ticksPerBar = 4 * PPQ; // 3840
-  const startTicks = chosenBlock.startBar * ticksPerBar;
-  const endTicks = chosenBlock.endBar * ticksPerBar;
-
-  const blockStartSec = tickToSeconds(startTicks);
-  const blockEndSec = tickToSeconds(endTicks);
-  const durationSec = blockEndSec - blockStartSec;
-
-  currentBlockStartTransportSec = startTime;
-  currentBlockDurationSec = durationSec;
-
-  if (!midiData || !midiData.tracks) return durationSec;
-
-  midiData.tracks.forEach((track, trIdx) => {
-    const isPercussion = track.channel === 9 || (track.instrument && track.instrument.family === 'drums');
-
-    const notesInBlock = track.notes.filter(note =>
-      note.ticks >= startTicks && note.ticks < endTicks
-    );
-
-    notesInBlock.forEach((note) => {
-      const noteStartSec = tickToSeconds(note.ticks);
-      const relativeNoteTime = noteStartSec - blockStartSec;
-      const noteTime = startTime + relativeNoteTime;
-
-      if (musicalBlockPart) {
-        musicalBlockPart.add(noteTime, {
-          name: note.name,
-          midi: note.midi,
-          duration: note.duration,
-          velocity: note.velocity,
-          isPercussion: isPercussion,
-          trIdx: trIdx
-        });
-      }
-    });
-  });
-
-  return durationSec;
-}
-
-function scheduleNextBlockChain(startTransportSec) {
-  const transport = Tone.getTransport();
-
-  if (currentPlaybackState === 'INTRO') {
-    // Intro fanfare finished -> transition cleanly into EXPLORATION (starts on Day Chunk 1)
-    currentPlaybackState = 'EXPLORATION';
-    explorationCueSequenceIndex = 0;
-    if (melodyVolumeNode) {
-      melodyVolumeNode.volume.rampTo(0, 0.1, Tone.now());
-    }
-  } else if (currentPlaybackState === 'BATTLE_INTRO') {
-    // Intro flourish complete -> transition into BATTLE loop
-    currentPlaybackState = 'BATTLE';
-    if (melodyVolumeNode) {
-      melodyVolumeNode.volume.rampTo(-6, 0.1, Tone.now());
-    }
-  } else if (currentPlaybackState === 'BATTLE') {
-    if (nextPlaybackState !== 'BATTLE') {
-      // User requested exiting battle -> play BATTLE_OUTRO (Victory Flourish) first
-      currentPlaybackState = 'BATTLE_OUTRO';
-      if (melodyVolumeNode) {
-        melodyVolumeNode.volume.rampTo(0, 0.1, Tone.now());
-      }
-    } else {
-      // Continue repeating main battle loop
-      if (melodyVolumeNode) {
-        melodyVolumeNode.volume.rampTo(0, 0.1, Tone.now());
-      }
-    }
-  } else if (currentPlaybackState === 'BATTLE_OUTRO') {
-    // Victory flourish completed -> resolve directly to user's selected nextPlaybackState
-    currentPlaybackState = nextPlaybackState;
-    if (currentPlaybackState === 'EXPLORATION') {
-      explorationCueSequenceIndex = 0;
-    }
-    if (melodyVolumeNode) {
-      melodyVolumeNode.volume.rampTo(0, 0.1, Tone.now());
-    }
-  } else if (currentPlaybackState === 'QUIET') {
-    if (nextPlaybackState !== 'QUIET') {
-      currentPlaybackState = nextPlaybackState;
-      if (currentPlaybackState === 'EXPLORATION') {
-        explorationCueSequenceIndex = 0;
-      }
-      return scheduleNextBlockChain(startTransportSec);
-    }
-    if (melodyVolumeNode) {
-      melodyVolumeNode.volume.rampTo(0, 0.1, Tone.now());
-    }
-  } else { // EXPLORATION
-    if (nextPlaybackState !== 'EXPLORATION') {
-      currentPlaybackState = nextPlaybackState;
-      if (currentPlaybackState === 'EXPLORATION') {
-        explorationCueSequenceIndex = 0;
-      }
-      return scheduleNextBlockChain(startTransportSec);
-    }
-    if (melodyVolumeNode) {
-      melodyVolumeNode.volume.rampTo(0, 0.1, Tone.now());
-    }
-  }
-
-  const chosenBlock = selectBlockForState(currentPlaybackState);
-  const durationSec = scheduleMidiBlock(chosenBlock, startTransportSec);
-  const nextScheduledBlockTransportSec = startTransportSec + durationSec;
-
-  const leadTimeSec = 0.2;
-  const scheduleTriggerSec = Math.max(startTransportSec, nextScheduledBlockTransportSec - leadTimeSec);
-
-  conductorScheduleId = transport.schedule((scheduledTime) => {
-    scheduleNextBlockChain(nextScheduledBlockTransportSec);
-  }, scheduleTriggerSec);
-}
-
-// 5. UI Trigger Functions & Loading Indicator Promise
-export function getCurrentPlaybackState() {
-  return currentPlaybackState;
-}
-
-export function whenAudioLoaded(timeoutMs = 15000) {
-  if (!initPromise) {
-    initPromise = (async () => {
-      await detectAndInitAudioEngine();
-      return new Promise((resolve, reject) => {
-        let timer = setTimeout(() => {
-          reject(new Error("Audio sample loading timed out after " + (timeoutMs / 1000) + "s"));
-        }, timeoutMs);
-
-        Tone.loaded().then(() => {
-          clearTimeout(timer);
-          resolve();
-        }).catch((err) => {
-          clearTimeout(timer);
-          reject(err);
-        });
+        if (this.musicalBlockPart) {
+          this.musicalBlockPart.add(noteTime, {
+            name: note.name,
+            midi: note.midi,
+            duration: note.duration,
+            velocity: note.velocity,
+            isPercussion: isPercussion,
+            trIdx: trIdx
+          });
+        }
       });
-    })();
+    });
+
+    return durationSec;
   }
-  return initPromise;
+
+  onPhraseDownbeat(timelineTime) {
+    this.handleDeferredTransitions(timelineTime);
+    this.preventSampleDrift(timelineTime);
+
+    const chosenBlock = this.selectBlockForCurrentState();
+    const durationSec = this.scheduleMidiBlock(chosenBlock, timelineTime);
+
+    this.currentBlockStartTransportSec = timelineTime;
+    this.currentBlockDurationSec = durationSec || 12.8;
+    currentBlockStartTransportSec = this.currentBlockStartTransportSec;
+    currentBlockDurationSec = this.currentBlockDurationSec;
+  }
+
+  async startEngine() {
+    await Tone.start();
+    const transport = Tone.getTransport();
+    if (transport.state !== 'started') {
+      transport.start();
+    }
+  }
+
+  stopEngine() {
+    const transport = Tone.getTransport();
+    transport.stop();
+    transport.position = 0;
+    if (this.soundRack && typeof this.soundRack.releaseAll === 'function') {
+      this.soundRack.releaseAll();
+    }
+  }
+}
+
+// Singleton instance for global page lifecycle
+export const sequencer = new HyruleSequencer();
+
+export function getCurrentPlaybackState() {
+  return sequencer.currentState;
+}
+
+export function getPendingStateChange() {
+  return sequencer.pendingStateChange;
+}
+
+export function whenAudioLoaded() {
+  return sequencer.init();
 }
 
 export async function changeGameMode(newMode) {
   await whenAudioLoaded();
-  const transport = Tone.getTransport();
-
-  await Tone.start();
-
-  if (transport.state !== 'started') {
-    console.log("AudioContext activated and Transport started!");
-    
-    currentPlaybackState = 'INTRO';
-    nextPlaybackState = newMode === 'BATTLE' ? 'BATTLE' : newMode;
-
-    if (newMode === 'BATTLE') {
-      triggerImmediateBattleOverride();
-    } else {
-      const durationSec = scheduleMidiBlock(blockMap.INTRO, 0);
-      const nextScheduledBlockTransportSec = durationSec;
-      const leadTimeSec = 0.2;
-      const scheduleTriggerSec = Math.max(0, nextScheduledBlockTransportSec - leadTimeSec);
-      conductorScheduleId = transport.schedule((scheduledTime) => {
-        scheduleNextBlockChain(nextScheduledBlockTransportSec);
-      }, scheduleTriggerSec);
-    }
-    transport.start();
-    return;
-  }
-
-  console.log(`Mode change requested: ${newMode}. Current state: ${currentPlaybackState}`);
-
-  if (newMode === 'BATTLE') {
-    triggerImmediateBattleOverride();
-  } else {
-    nextPlaybackState = newMode;
-  }
-}
-
-function triggerImmediateBattleOverride() {
-  const transport = Tone.getTransport();
-
-  // 1. Mute Melodies Instantly over 0.04s window so intro flourish drum components layer cleanly
-  if (melodyVolumeNode) {
-    melodyVolumeNode.volume.rampTo(-Infinity, 0.04, Tone.now());
-  }
-
-  // 2. Clear Part container and pending conductor schedules
-  if (musicalBlockPart) {
-    musicalBlockPart.clear();
-  }
-
-  activeScheduledEvents.forEach(eventId => transport.clear(eventId));
-  activeScheduledEvents = [];
-
-  if (conductorScheduleId !== null) {
-    transport.clear(conductorScheduleId);
-    conductorScheduleId = null;
-  }
-
-  currentPlaybackState = 'BATTLE_INTRO';
-  nextPlaybackState = 'BATTLE';
-
-  const startSec = transport.seconds;
-  const durationSec = scheduleMidiBlock(blockMap.BATTLE_INTRO, startSec);
-
-  const nextScheduledBlockTransportSec = startSec + durationSec;
-  const leadTimeSec = 0.2;
-  const scheduleTriggerSec = Math.max(startSec, nextScheduledBlockTransportSec - leadTimeSec);
-
-  conductorScheduleId = transport.schedule((scheduledTime) => {
-    scheduleNextBlockChain(nextScheduledBlockTransportSec);
-  }, scheduleTriggerSec);
+  await sequencer.startEngine();
+  sequencer.setState(newMode);
 }

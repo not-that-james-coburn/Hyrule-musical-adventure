@@ -67,8 +67,10 @@ body {
 }
 
 .mode-exploration { color: var(--accent-green); }
+.mode-idle { color: #facc15; }
 .mode-quiet { color: var(--accent-blue); }
 .mode-battle { color: var(--accent-red); animation: pulse 1s infinite alternate; }
+.mode-pending { color: #fb923c; animation: pulse 0.6s infinite alternate; }
 
 .loading-badge {
     margin-top: 0.5rem;
