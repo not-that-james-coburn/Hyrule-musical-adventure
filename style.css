@@ -1,9 +1,9 @@
 :root {
-    --bg-dark: #12161a;
-    --panel-bg: #1e252b;
+    --bg-dark: #0f141a;
+    --panel-bg: #1a222a;
     --text-main: #e2e8f0;
     --accent-green: #4ade80;
-    --accent-blue: #3b82f6;
+    --accent-blue: #38bdf8;
     --accent-red: #ef4444;
     --border-color: #334155;
 }
@@ -17,17 +17,20 @@ body {
     align-items: center;
     min-height: 100vh;
     margin: 0;
+    padding: 1.5rem 0.5rem;
+    box-sizing: border-box;
 }
 
 .sequencer-container {
     background: var(--panel-bg);
     border: 2px solid var(--border-color);
     border-radius: 12px;
-    padding: 2rem;
+    padding: 1.75rem;
     width: 100%;
-    max-width: 480px;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    max-width: 680px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.6);
     text-align: center;
+    box-sizing: border-box;
 }
 
 .sequencer-header h1 {
@@ -41,16 +44,17 @@ body {
 .sequencer-header h2 {
     font-size: 0.875rem;
     color: #94a3b8;
-    margin: 0 0 2rem 0;
+    margin: 0 0 1.5rem 0;
     font-weight: 400;
 }
 
 /* Status Widget */
 .status-panel {
-    background: rgba(0,0,0,0.25);
+    background: rgba(0,0,0,0.3);
+    border: 1px solid rgba(255,255,255,0.06);
     border-radius: 8px;
-    padding: 1rem;
-    margin-bottom: 1.5rem;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1.25rem;
 }
 
 .status-label {
@@ -58,10 +62,11 @@ body {
     text-transform: uppercase;
     color: #94a3b8;
     margin-bottom: 0.25rem;
+    letter-spacing: 0.5px;
 }
 
 .status-value {
-    font-size: 1.25rem;
+    font-size: 1.2rem;
     font-weight: bold;
     transition: color 0.3s ease;
 }
@@ -96,33 +101,141 @@ body {
     border-color: rgba(239, 68, 68, 0.4);
 }
 
-/* Progress Bar Tracking */
-.progress-container {
-    margin-bottom: 2rem;
+/* Active 8-Bar Musical Cue Section */
+.cue-container {
+    margin-bottom: 1.25rem;
     text-align: left;
 }
 
-.progress-label {
+.cue-meta-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.4rem;
+}
+
+.cue-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: #94a3b8;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.cue-time {
+    font-size: 0.75rem;
+    color: #cbd5e1;
+    font-family: monospace;
+    background: rgba(0,0,0,0.3);
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.08);
+}
+
+.cue-info-card {
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.cue-badge {
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    transition: color 0.3s ease;
+}
+
+.cue-badge.mode-exploration {
+    color: var(--accent-green);
+    text-shadow: 0 0 12px rgba(74, 222, 128, 0.3);
+}
+
+.cue-badge.mode-quiet {
+    color: var(--accent-blue);
+    text-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
+}
+
+.cue-badge.mode-battle {
+    color: var(--accent-red);
+    text-shadow: 0 0 12px rgba(239, 68, 68, 0.35);
+}
+
+.cue-subname {
+    font-size: 0.85rem;
+    color: #94a3b8;
+    font-weight: 400;
+}
+
+.cue-pending-badge {
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    color: #fb923c;
+    background: rgba(251, 146, 60, 0.15);
+    border: 1px solid rgba(251, 146, 60, 0.4);
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    animation: pulse 0.7s infinite alternate;
+}
+
+/* Continuous Right-to-Left Streaming Canvas Visualizer */
+.visualizer-container {
+    margin-bottom: 1.5rem;
+    text-align: center;
+}
+
+#note-stream-canvas {
+    width: 100%;
+    height: 230px;
+    background: #0b0f14;
+    border: 1.5px solid #334155;
+    border-radius: 8px;
+    box-shadow: inset 0 2px 8px rgba(0,0,0,0.7), 0 4px 14px rgba(0,0,0,0.4);
+    display: block;
+}
+
+.visualizer-legend {
+    display: flex;
+    justify-content: center;
+    gap: 1.25rem;
+    margin-top: 0.6rem;
     font-size: 0.75rem;
     color: #94a3b8;
-    margin-bottom: 0.5rem;
+    flex-wrap: wrap;
 }
 
-.progress-bar-wrapper {
-    background: #0f172a;
-    border-radius: 9999px;
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.legend-dot {
+    width: 8px;
     height: 8px;
-    overflow: hidden;
-    width: 100%;
+    border-radius: 50%;
+    display: inline-block;
 }
 
-.progress-bar-fill {
-    background: var(--accent-green);
-    height: 100%;
-    width: 0%; /* Driven via JS requestAnimationFrame */
+.legend-dot.green {
+    background-color: var(--accent-green);
+    box-shadow: 0 0 6px var(--accent-green);
 }
 
-/* Controls Interaction Pad */
+.legend-dot.blue {
+    background-color: var(--accent-blue);
+    box-shadow: 0 0 6px var(--accent-blue);
+}
+
+.legend-dot.red {
+    background-color: var(--accent-red);
+    box-shadow: 0 0 6px var(--accent-red);
+}
+
+/* Controls Interaction Pad: strictly 3 buttons */
 .control-pad {
     display: flex;
     flex-direction: column;
@@ -131,35 +244,42 @@ body {
 
 .btn {
     background: #334155;
-    border: none;
+    border: 1px solid transparent;
     border-radius: 6px;
     color: var(--text-main);
     cursor: pointer;
     font-size: 1rem;
     font-weight: 600;
-    padding: 1rem;
+    padding: 1rem 1.25rem;
     transition: all 0.2s ease;
     text-align: left;
 }
 
-.btn:hover {
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn:hover:not(:disabled) {
     background: #475569;
 }
 
 .btn.active {
     outline: 2px solid var(--accent-green);
     background: #1e293b;
+    border-color: var(--accent-green);
 }
 
 .danger-btn {
     border: 1px solid rgba(239, 68, 68, 0.4);
 }
-.danger-btn:hover {
+.danger-btn:hover:not(:disabled) {
     background: var(--accent-red);
 }
 .danger-btn.active {
     outline: 2px solid var(--accent-red);
     background: rgba(239, 68, 68, 0.2);
+    border-color: var(--accent-red);
 }
 
 .sequencer-footer p {
