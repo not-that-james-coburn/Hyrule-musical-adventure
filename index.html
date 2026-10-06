@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Hyrule Field Dynamic Audio Sequencer</title>
 
     <script type="importmap">
@@ -12,76 +12,66 @@
       }
     }
     </script>
-  <script type="module" crossorigin src="./assets/index-BOURyhoU.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-DHyR4T-E.css">
+  <script type="module" crossorigin src="./assets/index-BmuqPZ0m.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-BbNzIGmZ.css">
 </head>
 <body>
-    <div class="sequencer-container">
-        <header class="sequencer-header">
-            <h1>Hyrule Field</h1>
-            <h2>Koji Kondo Interactive Audio Simulator</h2>
+    <main class="nintendo-console">
+        <!-- Top Nintendo Bar -->
+        <header class="console-header">
+            <div class="brand-badge">
+                <span class="triforce">▲</span>
+                <span class="brand-text">HYRULE FIELD</span>
+            </div>
+            <div id="loading-indicator" class="status-pill loading">⏳ Loading...</div>
         </header>
 
-        <!-- Status Panel -->
-        <div class="status-panel">
-            <div class="status-label">Current Mode:</div>
-            <div id="current-state-display" class="status-value mode-exploration">Exploration (Day)</div>
-            <div id="loading-indicator" class="loading-badge">⏳ Loading Soundfont Audio Samples...</div>
+        <!-- Compact Nintendo HUD Strip -->
+        <section class="hud-bar">
+            <div class="hud-col active-col">
+                <span class="hud-tag">NOW</span>
+                <span id="cue-display" class="hud-title mode-exploration">☀️ Day 1 (Bars 17–25)</span>
+            </div>
+            <div class="hud-col clock-col">
+                <span id="cue-measure-counter" class="hud-clock">Bar 1/8</span>
+            </div>
+            <div class="hud-col next-col">
+                <span class="hud-tag muted">NEXT</span>
+                <span id="cue-next-display" class="hud-title next-title">☀️ Day 2</span>
+            </div>
+        </section>
+
+        <!-- Transition Queue Pill (Appears when state change is queued) -->
+        <div id="cue-pending-badge" class="transition-pill" style="display: none;">
+            ⏳ Switching at next 8-bar downbeat
         </div>
 
-        <!-- 8-Bar Active & Pre-Queued Musical Cue Display -->
-        <div class="cue-container">
-            <div class="cue-meta-header">
-                <span class="cue-label">Interactive 8-Bar Cue Pipeline</span>
-                <span id="cue-measure-counter" class="cue-time">Ready to Play</span>
-            </div>
-            <div class="cue-info-card">
-                <div class="cue-row active-cue-row">
-                    <span class="cue-tag">NOW PLAYING</span>
-                    <div class="cue-details">
-                        <div id="cue-display" class="cue-badge mode-exploration">☀️ Day Chunk 1 (Bars 17–25)</div>
-                        <div id="cue-subname" class="cue-subname">Main Theme A (Overworld)</div>
-                    </div>
-                </div>
-                <div class="cue-row next-cue-row">
-                    <span class="cue-tag next-tag">NEXT QUEUED</span>
-                    <div class="cue-details">
-                        <div id="cue-next-display" class="cue-next-badge">☀️ Day Chunk 2 (Bars 25–33)</div>
-                    </div>
-                </div>
-            </div>
-            <div id="cue-pending-badge" class="cue-pending-badge" style="display: none;">
-                ⏳ Transition Queued: ⚔️ Battle Encounter (Switches at next 8-bar downbeat)
+        <!-- Right-to-Left Streaming Canvas Visualizer -->
+        <div class="viewport-canvas">
+            <canvas id="note-stream-canvas" width="600" height="175"></canvas>
+            <div class="viewport-legend">
+                <span class="dot green"></span><span>Day</span>
+                <span class="dot blue"></span><span>Night</span>
+                <span class="dot red"></span><span>Battle</span>
             </div>
         </div>
 
-        <!-- Continuous Right-to-Left Streaming Note Visualizer -->
-        <div class="visualizer-container">
-            <canvas id="note-stream-canvas" width="640" height="230"></canvas>
-            <div class="visualizer-legend">
-                <span class="legend-item"><span class="legend-dot green"></span> Exploration Melodies (Green)</span>
-                <span class="legend-item"><span class="legend-dot blue"></span> Quiet Melodies (Blue)</span>
-                <span class="legend-item"><span class="legend-dot red"></span> Battle Melodies (Red)</span>
-            </div>
-        </div>
-
-        <!-- Control Buttons Pad: strictly 3 buttons -->
-        <div class="control-pad">
-            <button class="btn state-btn active" data-mode="EXPLORATION">
-                ☀️ Exploration (Day)
+        <!-- Nintendo 3-Button Control Pad (Touch-friendly horizontal row) -->
+        <nav class="controller-pad">
+            <button class="pad-btn day-btn active" data-mode="EXPLORATION">
+                <span class="pad-icon">☀️</span>
+                <span class="pad-label">Day</span>
             </button>
-            <button class="btn state-btn" data-mode="QUIET">
-                🌙 Quiet (Night/Rest)
+            <button class="pad-btn night-btn" data-mode="QUIET">
+                <span class="pad-icon">🌙</span>
+                <span class="pad-label">Night</span>
             </button>
-            <button class="btn state-btn danger-btn" data-mode="BATTLE">
-                ⚔️ Battle Encounter
+            <button class="pad-btn battle-btn" data-mode="BATTLE">
+                <span class="pad-icon">⚔️</span>
+                <span class="pad-label">Battle</span>
             </button>
-        </div>
-
-        <footer class="sequencer-footer">
-            <p>Click any mode to alter the musical sequencing in real-time.</p>
-        </footer>
-    </div>
+        </nav>
+    </main>
 
 </body>
 </html>
