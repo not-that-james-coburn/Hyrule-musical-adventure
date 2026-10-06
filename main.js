@@ -199,16 +199,17 @@ document.addEventListener('DOMContentLoaded', () => {
   const PLAYHEAD_X = 64; // Compact playhead X position for mobile
   const PIXELS_PER_SEC = 100; // Conveyor rate
 
-  // Setup HiDPI Canvas Scaling
+  let cachedCanvasWidth = 600;
+  const cachedCanvasHeight = 175;
+
+  // Setup HiDPI Canvas Scaling (cached dimensions eliminate per-frame getBoundingClientRect)
   function setupCanvasDPI() {
     if (!canvas || !ctx) return;
     const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    const targetWidth = rect.width || 600;
-    const targetHeight = 175;
+    cachedCanvasWidth = canvas.clientWidth || 600;
 
-    canvas.width = targetWidth * dpr;
-    canvas.height = targetHeight * dpr;
+    canvas.width = cachedCanvasWidth * dpr;
+    canvas.height = cachedCanvasHeight * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
@@ -222,41 +223,30 @@ document.addEventListener('DOMContentLoaded', () => {
     percussion: { top: 132, bottom: 172, height: 40, label: 'PERC' }
   };
 
+  // Static color table: eliminates ~24,000 per-second object allocations in the render loop
+  const NOTE_COLORS = {
+    melody: {
+      EXPLORATION: { fill: '#4ade80', stroke: '#86efac', glow: 'rgba(74, 222, 128, 0.55)', hit: '#ffffff' },
+      QUIET: { fill: '#38bdf8', stroke: '#93c5fd', glow: 'rgba(56, 189, 248, 0.55)', hit: '#ffffff' },
+      BATTLE: { fill: '#ef4444', stroke: '#fca5a5', glow: 'rgba(239, 68, 68, 0.6)', hit: '#ffffff' }
+    },
+    bass: {
+      EXPLORATION: { fill: '#10b981', stroke: '#34d399', glow: 'rgba(16, 185, 129, 0.4)', hit: '#a7f3d0' },
+      QUIET: { fill: '#6366f1', stroke: '#818cf8', glow: 'rgba(99, 102, 241, 0.4)', hit: '#c7d2fe' },
+      BATTLE: { fill: '#f97316', stroke: '#fb923c', glow: 'rgba(249, 115, 22, 0.45)', hit: '#fed7aa' }
+    },
+    percussion: {
+      EXPLORATION: { fill: '#a3e635', stroke: '#bef264', glow: 'rgba(163, 230, 53, 0.4)', hit: '#fef08a' },
+      QUIET: { fill: '#06b6d4', stroke: '#67e8f9', glow: 'rgba(6, 182, 212, 0.4)', hit: '#e0f2fe' },
+      BATTLE: { fill: '#f43f5e', stroke: '#fda4af', glow: 'rgba(244, 63, 94, 0.45)', hit: '#ffe4e6' }
+    }
+  };
+
   function getNoteColors(note) {
-    const mode = note.mode || 'EXPLORATION';
     const track = note.trackType || 'melody';
-
-    if (track === 'melody') {
-      if (mode === 'EXPLORATION') {
-        return { fill: '#4ade80', stroke: '#86efac', glow: 'rgba(74, 222, 128, 0.55)', hit: '#ffffff' };
-      }
-      if (mode === 'QUIET') {
-        return { fill: '#38bdf8', stroke: '#93c5fd', glow: 'rgba(56, 189, 248, 0.55)', hit: '#ffffff' };
-      }
-      // BATTLE
-      return { fill: '#ef4444', stroke: '#fca5a5', glow: 'rgba(239, 68, 68, 0.6)', hit: '#ffffff' };
-    }
-
-    if (track === 'bass') {
-      if (mode === 'EXPLORATION') {
-        return { fill: '#10b981', stroke: '#34d399', glow: 'rgba(16, 185, 129, 0.4)', hit: '#a7f3d0' };
-      }
-      if (mode === 'QUIET') {
-        return { fill: '#6366f1', stroke: '#818cf8', glow: 'rgba(99, 102, 241, 0.4)', hit: '#c7d2fe' };
-      }
-      // BATTLE
-      return { fill: '#f97316', stroke: '#fb923c', glow: 'rgba(249, 115, 22, 0.45)', hit: '#fed7aa' };
-    }
-
-    // Percussion
-    if (mode === 'EXPLORATION') {
-      return { fill: '#a3e635', stroke: '#bef264', glow: 'rgba(163, 230, 53, 0.4)', hit: '#fef08a' };
-    }
-    if (mode === 'QUIET') {
-      return { fill: '#06b6d4', stroke: '#67e8f9', glow: 'rgba(6, 182, 212, 0.4)', hit: '#e0f2fe' };
-    }
-    // BATTLE
-    return { fill: '#f43f5e', stroke: '#fda4af', glow: 'rgba(244, 63, 94, 0.45)', hit: '#ffe4e6' };
+    const mode = note.mode || 'EXPLORATION';
+    const trackColors = NOTE_COLORS[track] || NOTE_COLORS.melody;
+    return trackColors[mode] || trackColors.EXPLORATION;
   }
 
   function getNoteYAndHeight(note) {
@@ -334,8 +324,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 2. Draw Note Stream Canvas
     if (canvas && ctx) {
-      const cssWidth = canvas.getBoundingClientRect().width || 600;
-      const cssHeight = 175;
+      const cssWidth = cachedCanvasWidth;
+      const cssHeight = cachedCanvasHeight;
 
       // Clear Canvas Background
       ctx.fillStyle = '#080c10';
@@ -372,27 +362,21 @@ document.addEventListener('DOMContentLoaded', () => {
           activeNotesHitCount++;
         }
 
-        ctx.save();
-
+        let alpha = 1.0;
         // Alpha fade out as notes pass playhead towards left margin
         if (noteX < PLAYHEAD_X) {
-          const fadeAlpha = Math.max(0.12, (noteX + noteW) / (PLAYHEAD_X + noteW));
-          ctx.globalAlpha = fadeAlpha;
+          alpha = Math.max(0.12, (noteX + noteW) / (PLAYHEAD_X + noteW));
         }
 
         // When in Rest mode, percussion is muted: render faint ghost notes
         if (isPercMuted) {
-          ctx.globalAlpha = (ctx.globalAlpha !== undefined ? ctx.globalAlpha : 1.0) * 0.2;
+          alpha *= 0.2;
         }
 
+        ctx.globalAlpha = alpha;
         ctx.fillStyle = isCurrentlyPlaying ? colors.hit : colors.fill;
         ctx.strokeStyle = colors.stroke;
         ctx.lineWidth = 1;
-
-        if (isCurrentlyPlaying) {
-          ctx.shadowColor = colors.glow;
-          ctx.shadowBlur = 12;
-        }
 
         ctx.beginPath();
         if (typeof ctx.roundRect === 'function') {
@@ -402,9 +386,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         ctx.fill();
         ctx.stroke();
-
-        ctx.restore();
       }
+
+      ctx.globalAlpha = 1.0;
 
       // Draw Playhead line and active collision sparks
       drawPlayhead(ctx, cssHeight, activeNotesHitCount > 0, cueInfo);
@@ -500,27 +484,45 @@ document.addEventListener('DOMContentLoaded', () => {
     ctx.restore();
   }
 
+  let lastCueText = '';
+  let lastCueClass = '';
+  let lastSubname = '';
+  let lastPendingDisplay = '';
+  let lastPendingText = '';
+  let lastNextText = '';
+  let lastNextClass = '';
+  let lastNextTagText = '';
+  let lastNextTagClass = '';
+  let lastCounterText = '';
+
   function updateUIElements(cueInfo, isPlaying) {
     // 1. Active 8-Bar Cue ID display
     if (cueDisplayEl) {
       const modeIcon = (cueInfo.cueMode === 'BATTLE')
         ? '⚔️'
         : (cueInfo.cueMode === 'QUIET' ? '🌙' : '☀️');
+      const cueText = `${modeIcon} ${cueInfo.cueId}`;
+      if (cueText !== lastCueText) {
+        cueDisplayEl.innerText = cueText;
+        lastCueText = cueText;
+      }
 
-      cueDisplayEl.innerText = `${modeIcon} ${cueInfo.cueId}`;
-
-      if (cueInfo.cueMode === 'BATTLE') {
-        cueDisplayEl.className = "hud-title mode-battle";
-      } else if (cueInfo.cueMode === 'QUIET') {
-        cueDisplayEl.className = "hud-title mode-quiet";
-      } else {
-        cueDisplayEl.className = "hud-title mode-exploration";
+      const cueClass = (cueInfo.cueMode === 'BATTLE')
+        ? "hud-title mode-battle"
+        : (cueInfo.cueMode === 'QUIET' ? "hud-title mode-quiet" : "hud-title mode-exploration");
+      if (cueClass !== lastCueClass) {
+        cueDisplayEl.className = cueClass;
+        lastCueClass = cueClass;
       }
     }
 
     // 2. Motif name & inline transition queue status (Zero Layout Shift)
     if (cueSubnameEl) {
-      cueSubnameEl.innerText = cueInfo.cueName || "Hyrule Overworld";
+      const subname = cueInfo.cueName || "Hyrule Overworld";
+      if (subname !== lastSubname) {
+        cueSubnameEl.innerText = subname;
+        lastSubname = subname;
+      }
     }
 
     if (cuePendingTextEl) {
@@ -528,10 +530,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const modeLabel = (cueInfo.pendingMode === 'BATTLE')
           ? 'Battle'
           : (cueInfo.pendingMode === 'QUIET' ? 'Rest' : 'Adventure');
-        cuePendingTextEl.style.display = 'inline';
-        cuePendingTextEl.innerText = ` • ⏳ Queued: ${modeLabel} (Bar 8 Downbeat)`;
+        const pText = ` • ⏳ Queued: ${modeLabel} (Bar 8 Downbeat)`;
+        if (lastPendingDisplay !== 'inline') {
+          cuePendingTextEl.style.display = 'inline';
+          lastPendingDisplay = 'inline';
+        }
+        if (pText !== lastPendingText) {
+          cuePendingTextEl.innerText = pText;
+          lastPendingText = pText;
+        }
       } else {
-        cuePendingTextEl.style.display = 'none';
+        if (lastPendingDisplay !== 'none') {
+          cuePendingTextEl.style.display = 'none';
+          lastPendingDisplay = 'none';
+        }
       }
     }
 
@@ -541,38 +553,60 @@ document.addEventListener('DOMContentLoaded', () => {
         const nextIcon = (cueInfo.upcomingCueMode === 'BATTLE')
           ? '⚔️'
           : (cueInfo.upcomingCueMode === 'QUIET' ? '🌙' : '☀️');
-        cueNextDisplayEl.innerText = `${nextIcon} ${cueInfo.upcomingCueId.replace(/\s*\(Bars.*?\)/, '')}`;
+        const nextText = `${nextIcon} ${cueInfo.upcomingCueId.replace(/\s*\(Bars.*?\)/, '')}`;
+        if (nextText !== lastNextText) {
+          cueNextDisplayEl.innerText = nextText;
+          lastNextText = nextText;
+        }
 
-        if (cueInfo.upcomingCueMode === 'BATTLE') {
-          cueNextDisplayEl.className = "hud-title next-title mode-battle";
-        } else if (cueInfo.upcomingCueMode === 'QUIET') {
-          cueNextDisplayEl.className = "hud-title next-title mode-quiet";
-        } else {
-          cueNextDisplayEl.className = "hud-title next-title mode-exploration";
+        const nextClass = (cueInfo.upcomingCueMode === 'BATTLE')
+          ? "hud-title next-title mode-battle"
+          : (cueInfo.upcomingCueMode === 'QUIET' ? "hud-title next-title mode-quiet" : "hud-title next-title mode-exploration");
+        if (nextClass !== lastNextClass) {
+          cueNextDisplayEl.className = nextClass;
+          lastNextClass = nextClass;
         }
       } else {
-        cueNextDisplayEl.innerText = "--";
+        if (lastNextText !== '--') {
+          cueNextDisplayEl.innerText = '--';
+          lastNextText = '--';
+        }
       }
     }
 
     // 4. Next Tag / Queued Tag state
     if (hudNextTagEl) {
       if (cueInfo.pendingMode) {
-        hudNextTagEl.innerText = "QUEUED";
-        hudNextTagEl.className = "hud-tag queued";
+        if (lastNextTagText !== 'QUEUED') {
+          hudNextTagEl.innerText = 'QUEUED';
+          lastNextTagText = 'QUEUED';
+        }
+        if (lastNextTagClass !== 'hud-tag queued') {
+          hudNextTagEl.className = 'hud-tag queued';
+          lastNextTagClass = 'hud-tag queued';
+        }
       } else {
-        hudNextTagEl.innerText = "NEXT";
-        hudNextTagEl.className = "hud-tag muted";
+        if (lastNextTagText !== 'NEXT') {
+          hudNextTagEl.innerText = 'NEXT';
+          lastNextTagText = 'NEXT';
+        }
+        if (lastNextTagClass !== 'hud-tag muted') {
+          hudNextTagEl.className = 'hud-tag muted';
+          lastNextTagClass = 'hud-tag muted';
+        }
       }
     }
 
-    // 5. Measure Counter within 8-bar block
+    // 5. Measure Counter within 8-bar block (Updates only once every 1.6s)
     if (cueMeasureCounterEl) {
+      let counterText = "Ready";
       if (isPlaying) {
         const barInBlock = Math.min(8, Math.floor(cueInfo.timeInBlock / 1.6) + 1);
-        cueMeasureCounterEl.innerText = `Bar ${barInBlock}/8`;
-      } else {
-        cueMeasureCounterEl.innerText = "Ready";
+        counterText = `Bar ${barInBlock}/8`;
+      }
+      if (counterText !== lastCounterText) {
+        cueMeasureCounterEl.innerText = counterText;
+        lastCounterText = counterText;
       }
     }
   }

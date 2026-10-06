@@ -485,8 +485,8 @@ export class HyruleSequencer {
       }
     }
 
-    // Polyphonic Drum Synths: softened dynamics to prevent harsh clatter
-    const kickSynth = new Tone.PolySynth(Tone.MembraneSynth, {
+    // High-performance monophonic drum synths: zero voice leakage or PolySynth node accumulation
+    const kickSynth = new Tone.MembraneSynth({
       pitchDecay: 0.05,
       octaves: 4,
       oscillator: { type: 'sine' },
@@ -496,7 +496,7 @@ export class HyruleSequencer {
     kickSynth.connect(this.gains.explorePercussion);
     kickSynth.connect(this.gains.battleMusic);
 
-    const hihatSynth = new Tone.PolySynth(Tone.MetalSynth, {
+    const hihatSynth = new Tone.MetalSynth({
       frequency: 180,
       envelope: { attack: 0.001, decay: 0.04, release: 0.04 },
       harmonicity: 3.2,
@@ -514,11 +514,11 @@ export class HyruleSequencer {
           try { s.releaseAll(); } catch (e) {}
         }
       });
-      if (kickSynth && typeof kickSynth.releaseAll === 'function') {
-        try { kickSynth.releaseAll(); } catch (e) {}
+      if (kickSynth && typeof kickSynth.triggerRelease === 'function') {
+        try { kickSynth.triggerRelease(); } catch (e) {}
       }
-      if (hihatSynth && typeof hihatSynth.releaseAll === 'function') {
-        try { hihatSynth.releaseAll(); } catch (e) {}
+      if (hihatSynth && typeof hihatSynth.triggerRelease === 'function') {
+        try { hihatSynth.triggerRelease(); } catch (e) {}
       }
     }
 
@@ -1014,9 +1014,17 @@ export class HyruleSequencer {
     this.upcomingBlock = nextBlock;
     this.scheduleNotesForBlock(nextBlock, nextPhraseIdx, nextStartTransportSec);
 
-    // 4. Clean up old visualizer notes (more than 4s in the past)
+    // 4. Clean up Transport events from older phrases to prevent unbounded timeline memory growth
+    Object.keys(this.phraseEventIds).forEach(key => {
+      const idx = parseInt(key, 10);
+      if (idx < this.phraseIndex - 1) {
+        this.clearPhraseEvents(idx);
+      }
+    });
+
+    // 5. Clean up old visualizer notes (more than 2.5s in the past)
     const currentTransportSec = Tone.getTransport().seconds;
-    this.streamNotes = this.streamNotes.filter(n => (n.transportTime + n.duration) >= (currentTransportSec - 4.0));
+    this.streamNotes = this.streamNotes.filter(n => (n.transportTime + n.duration) >= (currentTransportSec - 2.5));
   }
 
   async startEngine() {
