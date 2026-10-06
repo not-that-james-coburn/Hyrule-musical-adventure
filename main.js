@@ -3,6 +3,8 @@ import {
   changeGameMode,
   getCurrentPlaybackState,
   getPendingStateChange,
+  getCurrentBlockStartTransportSec,
+  getCurrentBlockDurationSec,
   currentBlockStartTransportSec,
   currentBlockDurationSec,
   whenAudioLoaded,
@@ -44,7 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (btn.disabled) return;
       const selectedMode = btn.getAttribute('data-mode');
 
-      // 1. Invoke function to signal change to Tone.js
+      // 1. Signal change to Tone.js
       changeGameMode(selectedMode);
 
       // 2. Refresh active UI layouts
@@ -61,8 +63,15 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderProgressBar() {
     const transport = Tone.getTransport();
     if (transport && (transport.state === 'started' || transport.state === 'running')) {
-      const elapsedInBlock = Math.max(0, transport.seconds - currentBlockStartTransportSec);
-      const progressPercent = Math.min(100, (elapsedInBlock / currentBlockDurationSec) * 100);
+      const blockStart = (typeof getCurrentBlockStartTransportSec === 'function')
+        ? getCurrentBlockStartTransportSec()
+        : currentBlockStartTransportSec;
+      const blockDur = (typeof getCurrentBlockDurationSec === 'function')
+        ? getCurrentBlockDurationSec()
+        : (currentBlockDurationSec || 12.8);
+
+      const elapsedInBlock = Math.max(0, transport.seconds - blockStart);
+      const progressPercent = Math.min(100, (elapsedInBlock / blockDur) * 100);
 
       fillEl.style.width = `${Math.min(Math.max(progressPercent, 0), 100)}%`;
 
@@ -79,6 +88,10 @@ document.addEventListener('DOMContentLoaded', () => {
           displayEl.innerText = "☀️ Exploration (Pending Victory Flourish...)";
           displayEl.className = "status-value mode-pending";
           fillEl.style.backgroundColor = "var(--accent-green)";
+        } else if (pendingState === 'QUIET') {
+          displayEl.innerText = "🌙 Quiet (Pending Phrase Downbeat...)";
+          displayEl.className = "status-value mode-pending";
+          fillEl.style.backgroundColor = "var(--accent-blue)";
         } else {
           displayEl.innerText = `${pendingState} (Pending Phrase Downbeat...)`;
           displayEl.className = "status-value mode-pending";
@@ -87,10 +100,6 @@ document.addEventListener('DOMContentLoaded', () => {
         displayEl.innerText = "Exploration (Day)";
         displayEl.className = "status-value mode-exploration";
         fillEl.style.backgroundColor = "var(--accent-green)";
-      } else if (currentPlaybackState === 'IDLE') {
-        displayEl.innerText = "🛡️ Idle (Standing Still)";
-        displayEl.className = "status-value mode-idle";
-        fillEl.style.backgroundColor = "#facc15";
       } else if (currentPlaybackState === 'QUIET') {
         displayEl.innerText = "Quiet (Night/Rest)";
         displayEl.className = "status-value mode-quiet";

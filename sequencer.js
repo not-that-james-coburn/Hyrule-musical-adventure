@@ -4,7 +4,6 @@ import * as Tone from 'tone';
 export let currentBlockDurationSec = 12.8;
 export let currentBlockStartTransportSec = 0;
 
-// Helper to convert MIDI pitch number to note name (e.g. 60 -> "C4")
 // Standard 12-tone chromatic scale (C, C#, D, D#, E, F, F#, G, G#, A, A#, B)
 function midiToNoteName(midi) {
   const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -48,7 +47,7 @@ const blockMap = {
 
 export class HyruleSequencer {
   constructor() {
-    // App State tracking (3 primary musical modes: 'EXPLORATION', 'QUIET', 'BATTLE')
+    // 3 Canonical musical modes: 'EXPLORATION', 'QUIET', 'BATTLE'
     this.currentState = 'EXPLORATION';
     this.pendingStateChange = null;
 
@@ -72,7 +71,7 @@ export class HyruleSequencer {
     this.PPQ = 960;
     this.soundRack = null;
     this.musicalBlockPart = null;
-    this.phraseScheduler = null;
+    this.conductorScheduleId = null;
 
     this.explorationCueSequenceIndex = 0;
     this.currentExplorationBlockIndex = null;
@@ -80,6 +79,7 @@ export class HyruleSequencer {
 
     this.currentBlockStartTransportSec = 0;
     this.currentBlockDurationSec = 12.8;
+    this.nextBlockTransportSec = 0;
 
     this.isInitialized = false;
     this.initPromise = null;
@@ -95,15 +95,19 @@ export class HyruleSequencer {
       transport.bpm.value = this.BPM;
       transport.timeSignature = [4, 4];
 
-      // 1. Output Pipeline: Reverb + Master Limiter
+      // 1. Output Pipeline: Direct Master Limiter (always audible) + Reverb
       this.masterLimiter = new Tone.Limiter(-1).toDestination();
       this.masterReverb = new Tone.Reverb({ decay: 2.2, wet: 0.2 }).connect(this.masterLimiter);
 
-      // Connect localized gains to master reverb
+      // Connect localized gains directly to limiter for immediate audio output
+      this.gains.exploreCore.connect(this.masterLimiter);
+      this.gains.explorePercussion.connect(this.masterLimiter);
+      this.gains.idleHarp.connect(this.masterLimiter);
+      this.gains.battleMusic.connect(this.masterLimiter);
+
+      // Also send a portion to reverb for ambient depth
       this.gains.exploreCore.connect(this.masterReverb);
-      this.gains.explorePercussion.connect(this.masterReverb);
       this.gains.idleHarp.connect(this.masterReverb);
-      this.gains.battleMusic.connect(this.masterReverb);
 
       // 2. Load Assets (manifest + MIDI data)
       await this.loadProjectAssets();
@@ -117,12 +121,7 @@ export class HyruleSequencer {
         this.triggerSafeNote(sampler, noteEvent, noteEvent.duration, time);
       }, []).start(0);
 
-      // 5. Phase-Locking Clock Loop: fires precisely on the downbeat of every 8-measure segment block
-      this.phraseScheduler = new Tone.Loop((time) => {
-        this.onPhraseDownbeat(time);
-      }, `${this.BARS_PER_BLOCK}m`).start(0);
-
-      // Wait for soundfont samples to finish buffering with timeout protection
+      // Wait for soundfont samples to buffer with timeout protection
       try {
         await Promise.race([
           Tone.loaded(),
@@ -416,14 +415,13 @@ export class HyruleSequencer {
   }
 
   /**
-   * Expose clean hook API for UI buttons to switch the state machine mode.
-   * Supports the 3 primary musical modes: 'EXPLORATION', 'QUIET', 'BATTLE' (and 'IDLE' movement mix).
+   * Set musical mode. Supports 'EXPLORATION', 'QUIET', 'BATTLE' (and 'IDLE').
    */
   setState(newState) {
     if (newState === this.currentState && !this.pendingStateChange) return;
 
     if (newState === 'IDLE' || (this.currentState === 'IDLE' && newState === 'EXPLORATION')) {
-      // MOVEMENT MIX RULES: Execute immediate volume envelope crossfades mid-bar (within 400ms)
+      // Immediate volume envelope crossfade mid-bar
       this.currentState = newState;
       this.pendingStateChange = null;
       this.executeMovementCrossfade();
@@ -431,16 +429,16 @@ export class HyruleSequencer {
       // Smooth movement crossfade to quiet harps, defer musical phrase chunk change to 8-bar boundary
       this.executeMovementCrossfade('QUIET');
       this.pendingStateChange = 'QUIET';
-      console.log('Quiet transition registered. Pending phrase boundary break...');
+      console.log('Quiet transition registered. Pending phrase boundary downbeat...');
     } else if (newState === 'EXPLORATION' && this.currentState === 'QUIET') {
       // Smooth movement crossfade back to drums, defer chunk change to 8-bar boundary
       this.executeMovementCrossfade('EXPLORATION');
       this.pendingStateChange = 'EXPLORATION';
-      console.log('Exploration return registered. Pending phrase boundary break...');
+      console.log('Exploration return registered. Pending phrase boundary downbeat...');
     } else if (newState === 'BATTLE' || newState === 'EXPLORATION' || newState === 'QUIET') {
-      // COMBAT ENCOUNTER RULES: Defer execution until the master clock loop hits the 8-bar boundary
+      // Combat encounter: defer execution until master clock hits next 8-bar boundary
       this.pendingStateChange = newState;
-      console.log(`State transition registered (${newState}). Pending phrase boundary break...`);
+      console.log(`State transition registered (${newState}). Pending phrase boundary downbeat...`);
     }
   }
 
@@ -452,11 +450,9 @@ export class HyruleSequencer {
     const fadeTime = 0.4; // Smooth real-time shift time in seconds
 
     if (target === 'IDLE' || target === 'QUIET') {
-      // Instantly drop active explore rhythms, bring up quiet harps
       this.gains.explorePercussion.gain.linearRampToValueAtTime(0, now + fadeTime);
       this.gains.idleHarp.gain.linearRampToValueAtTime(1, now + fadeTime);
     } else if (target === 'EXPLORATION') {
-      // Immediately dial up exploration layers, mute the quiet harp stem
       this.gains.explorePercussion.gain.linearRampToValueAtTime(1, now + fadeTime);
       this.gains.idleHarp.gain.linearRampToValueAtTime(0, now + fadeTime);
     }
@@ -530,7 +526,7 @@ export class HyruleSequencer {
   }
 
   /**
-   * Realigns voices and cleans old events on every 8-bar downbeat mark
+   * Realigns voices and cleans old events across phrase boundaries
    */
   preventSampleDrift(timelineTime) {
     if (this.soundRack && typeof this.soundRack.releaseAll === 'function') {
@@ -538,7 +534,7 @@ export class HyruleSequencer {
     }
 
     if (this.musicalBlockPart && this.musicalBlockPart._events) {
-      const pastCutoff = Math.max(0, timelineTime - 1.0);
+      const pastCutoff = Math.max(0, Tone.getTransport().seconds - 1.0);
       this.musicalBlockPart._events = this.musicalBlockPart._events.filter(e => e.time >= pastCutoff);
     }
   }
@@ -576,7 +572,7 @@ export class HyruleSequencer {
     }
   }
 
-  scheduleMidiBlock(chosenBlock, startTime) {
+  scheduleMidiBlock(chosenBlock, startTransportSec) {
     if (!chosenBlock) return 12.8;
 
     const ticksPerBar = 4 * this.PPQ;
@@ -586,6 +582,11 @@ export class HyruleSequencer {
     const blockStartSec = this.tickToSeconds(startTicks);
     const blockEndSec = this.tickToSeconds(endTicks);
     const durationSec = blockEndSec - blockStartSec;
+
+    this.currentBlockStartTransportSec = startTransportSec;
+    this.currentBlockDurationSec = durationSec || 12.8;
+    currentBlockStartTransportSec = this.currentBlockStartTransportSec;
+    currentBlockDurationSec = this.currentBlockDurationSec;
 
     if (!this.midiData || !this.midiData.tracks) return durationSec;
 
@@ -599,7 +600,7 @@ export class HyruleSequencer {
       notesInBlock.forEach((note) => {
         const noteStartSec = this.tickToSeconds(note.ticks);
         const relativeNoteTime = noteStartSec - blockStartSec;
-        const noteTime = startTime + relativeNoteTime;
+        const noteTime = startTransportSec + relativeNoteTime;
 
         if (this.musicalBlockPart) {
           this.musicalBlockPart.add(noteTime, {
@@ -617,23 +618,63 @@ export class HyruleSequencer {
     return durationSec;
   }
 
-  onPhraseDownbeat(timelineTime) {
-    this.handleDeferredTransitions(timelineTime);
-    this.preventSampleDrift(timelineTime);
+  scheduleNextBlockChain(startTransportSec, scheduledAudioTime) {
+    const transport = Tone.getTransport();
 
+    // 1. Process deferred transitions on downbeat
+    this.handleDeferredTransitions(scheduledAudioTime || Tone.now());
+
+    // 2. Prevent sample drift
+    this.preventSampleDrift(scheduledAudioTime || Tone.now());
+
+    // 3. Select next block & schedule notes on the exact Transport timeline position
     const chosenBlock = this.selectBlockForCurrentState();
-    const durationSec = this.scheduleMidiBlock(chosenBlock, timelineTime);
+    const durationSec = this.scheduleMidiBlock(chosenBlock, startTransportSec);
 
-    this.currentBlockStartTransportSec = timelineTime;
-    this.currentBlockDurationSec = durationSec || 12.8;
-    currentBlockStartTransportSec = this.currentBlockStartTransportSec;
-    currentBlockDurationSec = this.currentBlockDurationSec;
+    const nextScheduledSec = startTransportSec + (durationSec || 12.8);
+    this.nextBlockTransportSec = nextScheduledSec;
+
+    // 4. Schedule conductor trigger 0.2s before the next 8-measure phrase downbeat
+    const leadTimeSec = 0.2;
+    const scheduleTriggerSec = Math.max(startTransportSec, nextScheduledSec - leadTimeSec);
+
+    this.conductorScheduleId = transport.schedule((scheduledTime) => {
+      this.scheduleNextBlockChain(nextScheduledSec, scheduledTime);
+    }, scheduleTriggerSec);
   }
 
   async startEngine() {
     await Tone.start();
     const transport = Tone.getTransport();
+
     if (transport.state !== 'started') {
+      transport.position = 0;
+      this.currentExplorationBlockIndex = 0;
+      this.explorationCueSequenceIndex = 0;
+
+      // Clear any previous scheduled events
+      if (this.conductorScheduleId !== null) {
+        transport.clear(this.conductorScheduleId);
+        this.conductorScheduleId = null;
+      }
+      if (this.musicalBlockPart) {
+        this.musicalBlockPart.clear();
+      }
+
+      // Schedule the very first 8-measure block starting at Transport second 0
+      const firstBlock = this.selectBlockForCurrentState();
+      const durationSec = this.scheduleMidiBlock(firstBlock, 0);
+
+      const nextBlockSec = durationSec || 12.8;
+      this.nextBlockTransportSec = nextBlockSec;
+
+      const leadTimeSec = 0.2;
+      const scheduleTriggerSec = Math.max(0, nextBlockSec - leadTimeSec);
+
+      this.conductorScheduleId = transport.schedule((scheduledTime) => {
+        this.scheduleNextBlockChain(nextBlockSec, scheduledTime);
+      }, scheduleTriggerSec);
+
       transport.start();
     }
   }
@@ -642,6 +683,13 @@ export class HyruleSequencer {
     const transport = Tone.getTransport();
     transport.stop();
     transport.position = 0;
+    if (this.conductorScheduleId !== null) {
+      transport.clear(this.conductorScheduleId);
+      this.conductorScheduleId = null;
+    }
+    if (this.musicalBlockPart) {
+      this.musicalBlockPart.clear();
+    }
     if (this.soundRack && typeof this.soundRack.releaseAll === 'function') {
       this.soundRack.releaseAll();
     }
@@ -659,12 +707,29 @@ export function getPendingStateChange() {
   return sequencer.pendingStateChange;
 }
 
+export function getCurrentBlockStartTransportSec() {
+  return sequencer.currentBlockStartTransportSec;
+}
+
+export function getCurrentBlockDurationSec() {
+  return sequencer.currentBlockDurationSec;
+}
+
 export function whenAudioLoaded() {
   return sequencer.init();
 }
 
 export async function changeGameMode(newMode) {
   await whenAudioLoaded();
-  await sequencer.startEngine();
+  await Tone.start();
+  const transport = Tone.getTransport();
+
+  if (transport.state !== 'started') {
+    sequencer.currentState = newMode;
+    sequencer.pendingStateChange = null;
+    await sequencer.startEngine();
+    return;
+  }
+
   sequencer.setState(newMode);
 }
