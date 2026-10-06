@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const loadingIndicator = document.getElementById('loading-indicator');
   const cueDisplayEl = document.getElementById('cue-display');
   const cueSubnameEl = document.getElementById('cue-subname');
+  const cueNextDisplayEl = document.getElementById('cue-next-display');
   const cuePendingBadgeEl = document.getElementById('cue-pending-badge');
   const cueMeasureCounterEl = document.getElementById('cue-measure-counter');
   const canvas = document.getElementById('note-stream-canvas');
@@ -97,35 +98,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (track === 'melody') {
       if (mode === 'EXPLORATION') {
-        return { fill: '#4ade80', stroke: '#86efac', glow: 'rgba(74, 222, 128, 0.45)', hit: '#ffffff' };
+        return { fill: '#4ade80', stroke: '#86efac', glow: 'rgba(74, 222, 128, 0.55)', hit: '#ffffff' };
       }
       if (mode === 'QUIET') {
-        return { fill: '#38bdf8', stroke: '#93c5fd', glow: 'rgba(56, 189, 248, 0.45)', hit: '#ffffff' };
+        return { fill: '#38bdf8', stroke: '#93c5fd', glow: 'rgba(56, 189, 248, 0.55)', hit: '#ffffff' };
       }
       // BATTLE
-      return { fill: '#ef4444', stroke: '#fca5a5', glow: 'rgba(239, 68, 68, 0.5)', hit: '#ffffff' };
+      return { fill: '#ef4444', stroke: '#fca5a5', glow: 'rgba(239, 68, 68, 0.6)', hit: '#ffffff' };
     }
 
     if (track === 'bass') {
       if (mode === 'EXPLORATION') {
-        return { fill: '#10b981', stroke: '#34d399', glow: 'rgba(16, 185, 129, 0.35)', hit: '#a7f3d0' };
+        return { fill: '#10b981', stroke: '#34d399', glow: 'rgba(16, 185, 129, 0.4)', hit: '#a7f3d0' };
       }
       if (mode === 'QUIET') {
-        return { fill: '#6366f1', stroke: '#818cf8', glow: 'rgba(99, 102, 241, 0.35)', hit: '#c7d2fe' };
+        return { fill: '#6366f1', stroke: '#818cf8', glow: 'rgba(99, 102, 241, 0.4)', hit: '#c7d2fe' };
       }
       // BATTLE
-      return { fill: '#f97316', stroke: '#fb923c', glow: 'rgba(249, 115, 22, 0.4)', hit: '#fed7aa' };
+      return { fill: '#f97316', stroke: '#fb923c', glow: 'rgba(249, 115, 22, 0.45)', hit: '#fed7aa' };
     }
 
     // Percussion
     if (mode === 'EXPLORATION') {
-      return { fill: '#a3e635', stroke: '#bef264', glow: 'rgba(163, 230, 53, 0.35)', hit: '#fef08a' };
+      return { fill: '#a3e635', stroke: '#bef264', glow: 'rgba(163, 230, 53, 0.4)', hit: '#fef08a' };
     }
     if (mode === 'QUIET') {
-      return { fill: '#06b6d4', stroke: '#67e8f9', glow: 'rgba(6, 182, 212, 0.35)', hit: '#e0f2fe' };
+      return { fill: '#06b6d4', stroke: '#67e8f9', glow: 'rgba(6, 182, 212, 0.4)', hit: '#e0f2fe' };
     }
     // BATTLE
-    return { fill: '#f43f5e', stroke: '#fda4af', glow: 'rgba(244, 63, 94, 0.4)', hit: '#ffe4e6' };
+    return { fill: '#f43f5e', stroke: '#fda4af', glow: 'rgba(244, 63, 94, 0.45)', hit: '#ffe4e6' };
   }
 
   function getNoteYAndHeight(note) {
@@ -199,7 +200,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.fillStyle = '#0b0f14';
       ctx.fillRect(0, 0, cssWidth, cssHeight);
 
-      // Draw subtle background grid & lane separators
+      // Draw background grid & lane separators
       drawCanvasBackground(ctx, cssWidth, cssHeight, currentTransportSec);
 
       // Draw streaming notes traveling right to left
@@ -212,7 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const noteW = Math.max(6, (note.duration * PIXELS_PER_SEC) - 2);
 
         // Cull notes outside visible viewport
-        if (noteX + noteW < 0 || noteX > cssWidth + 40) {
+        if (noteX + noteW < 0 || noteX > cssWidth + 80) {
           continue;
         }
 
@@ -241,8 +242,8 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.lineWidth = 1;
 
         if (isCurrentlyPlaying) {
-          ctx.shadowColor = colors.fill;
-          ctx.shadowBlur = 12;
+          ctx.shadowColor = colors.glow;
+          ctx.shadowBlur = 14;
         }
 
         ctx.beginPath();
@@ -267,11 +268,9 @@ document.addEventListener('DOMContentLoaded', () => {
   function drawCanvasBackground(ctx, width, height, currentTransportSec) {
     // 1. Draw Lane Backdrops & Dividers
     Object.values(LANES).forEach((lane, idx) => {
-      // Faint lane alternating shading
       ctx.fillStyle = idx % 2 === 0 ? 'rgba(255, 255, 255, 0.015)' : 'rgba(0, 0, 0, 0.15)';
       ctx.fillRect(0, lane.top, width, lane.height);
 
-      // Lane boundary line
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -279,7 +278,6 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.lineTo(width, lane.bottom);
       ctx.stroke();
 
-      // Lane label on left margin
       ctx.fillStyle = 'rgba(148, 163, 184, 0.45)';
       ctx.font = '9px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
       ctx.fillText(lane.label, 12, lane.top + 13);
@@ -288,14 +286,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // 2. Measure / Bar Grid Lines scrolling right-to-left (1 bar = 1.6s at 150 BPM)
     const barSec = 1.6;
     const startBarIdx = Math.floor(currentTransportSec / barSec) - 1;
-    const endBarIdx = startBarIdx + Math.ceil(width / (barSec * PIXELS_PER_SEC)) + 2;
+    const endBarIdx = startBarIdx + Math.ceil(width / (barSec * PIXELS_PER_SEC)) + 3;
 
     ctx.save();
     for (let b = Math.max(0, startBarIdx); b <= endBarIdx; b++) {
       const barTime = b * barSec;
       const barX = PLAYHEAD_X + (barTime - currentTransportSec) * PIXELS_PER_SEC;
 
-      if (barX >= 0 && barX <= width) {
+      if (barX >= 0 && barX <= width + 50) {
         const is8BarBoundary = (b % 8 === 0);
 
         ctx.beginPath();
@@ -303,15 +301,22 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.lineTo(barX, height);
 
         if (is8BarBoundary) {
-          ctx.strokeStyle = 'rgba(74, 222, 128, 0.25)';
-          ctx.lineWidth = 1.5;
+          // Luminous 8-bar phrase boundary line
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+          ctx.lineWidth = 1.8;
           ctx.setLineDash([]);
+          ctx.stroke();
+
+          // Subtitle tag at top of phrase boundary
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+          ctx.font = '8px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+          ctx.fillText('8-BAR CUE BOUNDARY', barX + 4, 13);
         } else {
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
           ctx.lineWidth = 1;
           ctx.setLineDash([3, 4]);
+          ctx.stroke();
         }
-        ctx.stroke();
       }
     }
     ctx.restore();
@@ -320,7 +325,6 @@ document.addEventListener('DOMContentLoaded', () => {
   function drawPlayhead(ctx, height, isHitting, cueInfo) {
     ctx.save();
 
-    // Playhead vertical luminous line
     const hitColor = (cueInfo.cueMode === 'BATTLE')
       ? '#ef4444'
       : (cueInfo.cueMode === 'QUIET' ? '#38bdf8' : '#4ade80');
@@ -330,7 +334,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (isHitting) {
       ctx.shadowColor = hitColor;
-      ctx.shadowBlur = 10;
+      ctx.shadowBlur = 12;
     }
 
     ctx.beginPath();
@@ -406,18 +410,38 @@ document.addEventListener('DOMContentLoaded', () => {
       cueSubnameEl.innerText = cueInfo.cueName || "Hyrule Overworld";
     }
 
-    // 3. Measure Counter within 8-bar block
+    // 3. Next Queued 8-Bar Cue ID display
+    if (cueNextDisplayEl) {
+      if (cueInfo.upcomingCueId) {
+        const nextIcon = (cueInfo.upcomingCueMode === 'BATTLE')
+          ? '⚔️'
+          : (cueInfo.upcomingCueMode === 'QUIET' ? '🌙' : '☀️');
+        cueNextDisplayEl.innerText = `${nextIcon} ${cueInfo.upcomingCueId}`;
+
+        if (cueInfo.upcomingCueMode === 'BATTLE') {
+          cueNextDisplayEl.className = "cue-next-badge mode-battle";
+        } else if (cueInfo.upcomingCueMode === 'QUIET') {
+          cueNextDisplayEl.className = "cue-next-badge mode-quiet";
+        } else {
+          cueNextDisplayEl.className = "cue-next-badge mode-exploration";
+        }
+      } else {
+        cueNextDisplayEl.innerText = "--";
+      }
+    }
+
+    // 4. Measure Counter within 8-bar block
     if (cueMeasureCounterEl) {
       if (isPlaying) {
         const barInBlock = Math.min(8, Math.floor(cueInfo.timeInBlock / 1.6) + 1);
-        const timeSec = cueInfo.timeInBlock.toFixed(1);
+        const timeSec = (cueInfo.timeInBlock % 12.8).toFixed(1);
         cueMeasureCounterEl.innerText = `Bar ${barInBlock} / 8 (${timeSec}s)`;
       } else {
         cueMeasureCounterEl.innerText = "Ready to Play";
       }
     }
 
-    // 4. Pending transition notification banner
+    // 5. Pending transition notification banner
     if (cuePendingBadgeEl) {
       if (cueInfo.pendingMode) {
         cuePendingBadgeEl.style.display = 'block';

@@ -101,7 +101,7 @@ body {
     border-color: rgba(239, 68, 68, 0.4);
 }
 
-/* Active 8-Bar Musical Cue Section */
+/* Active & Pre-Queued 8-Bar Musical Cue Section */
 .cue-container {
     margin-bottom: 1.25rem;
     text-align: left;
@@ -133,13 +133,51 @@ body {
 }
 
 .cue-info-card {
-    background: rgba(15, 23, 42, 0.7);
+    background: rgba(15, 23, 42, 0.75);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     padding: 0.75rem 1rem;
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 0.6rem;
+}
+
+.cue-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+
+.active-cue-row {
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cue-tag {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 0.2rem 0.45rem;
+    border-radius: 4px;
+    background: rgba(74, 222, 128, 0.15);
+    color: var(--accent-green);
+    border: 1px solid rgba(74, 222, 128, 0.35);
+    white-space: nowrap;
+    margin-top: 0.1rem;
+}
+
+.cue-tag.next-tag {
+    background: rgba(148, 163, 184, 0.15);
+    color: #94a3b8;
+    border-color: rgba(148, 163, 184, 0.3);
+}
+
+.cue-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    flex-grow: 1;
 }
 
 .cue-badge {
@@ -165,9 +203,28 @@ body {
 }
 
 .cue-subname {
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     color: #94a3b8;
     font-weight: 400;
+}
+
+.cue-next-badge {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #cbd5e1;
+    transition: color 0.3s ease;
+}
+
+.cue-next-badge.mode-exploration {
+    color: #86efac;
+}
+
+.cue-next-badge.mode-quiet {
+    color: #93c5fd;
+}
+
+.cue-next-badge.mode-battle {
+    color: #fca5a5;
 }
 
 .cue-pending-badge {
