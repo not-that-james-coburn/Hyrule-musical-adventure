@@ -12,8 +12,8 @@
       }
     }
     </script>
-  <script type="module" crossorigin src="./assets/index-COTP7B1I.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-BKrIrGjk.css">
+  <script type="module" crossorigin src="./assets/index-BOURyhoU.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-DHyR4T-E.css">
 </head>
 <body>
     <div class="sequencer-container">
@@ -29,15 +29,26 @@
             <div id="loading-indicator" class="loading-badge">⏳ Loading Soundfont Audio Samples...</div>
         </div>
 
-        <!-- 8-Bar Active Musical Cue Display -->
+        <!-- 8-Bar Active & Pre-Queued Musical Cue Display -->
         <div class="cue-container">
             <div class="cue-meta-header">
-                <span class="cue-label">Active 8-Bar Musical Cue</span>
-                <span id="cue-measure-counter" class="cue-time">Bar 1 / 8</span>
+                <span class="cue-label">Interactive 8-Bar Cue Pipeline</span>
+                <span id="cue-measure-counter" class="cue-time">Ready to Play</span>
             </div>
             <div class="cue-info-card">
-                <div id="cue-display" class="cue-badge">☀️ Day Chunk 1 (Bars 17–25)</div>
-                <div id="cue-subname" class="cue-subname">Main Theme A (Overworld)</div>
+                <div class="cue-row active-cue-row">
+                    <span class="cue-tag">NOW PLAYING</span>
+                    <div class="cue-details">
+                        <div id="cue-display" class="cue-badge mode-exploration">☀️ Day Chunk 1 (Bars 17–25)</div>
+                        <div id="cue-subname" class="cue-subname">Main Theme A (Overworld)</div>
+                    </div>
+                </div>
+                <div class="cue-row next-cue-row">
+                    <span class="cue-tag next-tag">NEXT QUEUED</span>
+                    <div class="cue-details">
+                        <div id="cue-next-display" class="cue-next-badge">☀️ Day Chunk 2 (Bars 25–33)</div>
+                    </div>
+                </div>
             </div>
             <div id="cue-pending-badge" class="cue-pending-badge" style="display: none;">
                 ⏳ Transition Queued: ⚔️ Battle Encounter (Switches at next 8-bar downbeat)
