@@ -5,8 +5,9 @@ export let currentBlockDurationSec = 12.8;
 export let currentBlockStartTransportSec = 0;
 
 // Helper to convert MIDI pitch number to note name (e.g. 60 -> "C4")
+// Standard 12-tone chromatic scale (C, C#, D, D#, E, F, F#, G, G#, A, A#, B)
 function midiToNoteName(midi) {
-  const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'B'];
+  const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
   const octave = Math.floor(midi / 12) - 1;
   return noteNames[midi % 12] + octave;
 }
@@ -47,8 +48,8 @@ const blockMap = {
 
 export class HyruleSequencer {
   constructor() {
-    // App State tracking
-    this.currentState = 'EXPLORATION'; // Options: 'EXPLORATION', 'IDLE', 'BATTLE', 'QUIET', 'BATTLE_INTRO', 'BATTLE_OUTRO'
+    // App State tracking (3 primary musical modes: 'EXPLORATION', 'QUIET', 'BATTLE')
+    this.currentState = 'EXPLORATION';
     this.pendingStateChange = null;
 
     // Timing constants matching Koji Kondo's MIDI design (150 BPM main theme, 8 bars per block)
@@ -121,8 +122,17 @@ export class HyruleSequencer {
         this.onPhraseDownbeat(time);
       }, `${this.BARS_PER_BLOCK}m`).start(0);
 
-      // Wait for soundfont samples to finish buffering in browser
-      await Tone.loaded();
+      // Wait for soundfont samples to finish buffering with timeout protection
+      try {
+        await Promise.race([
+          Tone.loaded(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Sample loading timed out after 20s')), 20000)
+          )
+        ]);
+      } catch (err) {
+        console.warn('Some SoundFont buffers took too long or had issues, continuing with ready samples:', err);
+      }
 
       this.isInitialized = true;
     })();
@@ -134,11 +144,23 @@ export class HyruleSequencer {
     const envBase = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) || './';
     const cleanBase = envBase.endsWith('/') ? envBase : envBase + '/';
 
+    // Derive root path from window.location if available (especially on GitHub Pages)
+    let pagePathBase = './';
+    if (typeof window !== 'undefined' && window.location && window.location.pathname) {
+      const p = window.location.pathname;
+      pagePathBase = p.endsWith('/') ? p : p.substring(0, p.lastIndexOf('/') + 1);
+      if (!pagePathBase.endsWith('/')) pagePathBase += '/';
+    }
+
     const manifestCandidateUrls = [
+      `${pagePathBase}soundfont/`,
+      `${pagePathBase}public/soundfont/`,
       `${cleanBase}soundfont/`,
       `${cleanBase}public/soundfont/`,
       './soundfont/',
-      './public/soundfont/'
+      './public/soundfont/',
+      '/soundfont/',
+      '/public/soundfont/'
     ];
 
     for (const candidate of manifestCandidateUrls) {
@@ -155,10 +177,13 @@ export class HyruleSequencer {
     }
 
     const midiCandidateUrls = [
+      `${pagePathBase}hyrule_field_midi.json`,
+      `${pagePathBase}public/hyrule_field_midi.json`,
       `${cleanBase}hyrule_field_midi.json`,
       `${cleanBase}public/hyrule_field_midi.json`,
       './hyrule_field_midi.json',
-      './public/hyrule_field_midi.json'
+      './public/hyrule_field_midi.json',
+      '/hyrule_field_midi.json'
     ];
 
     for (const url of midiCandidateUrls) {
@@ -392,6 +417,7 @@ export class HyruleSequencer {
 
   /**
    * Expose clean hook API for UI buttons to switch the state machine mode.
+   * Supports the 3 primary musical modes: 'EXPLORATION', 'QUIET', 'BATTLE' (and 'IDLE' movement mix).
    */
   setState(newState) {
     if (newState === this.currentState && !this.pendingStateChange) return;
@@ -401,26 +427,36 @@ export class HyruleSequencer {
       this.currentState = newState;
       this.pendingStateChange = null;
       this.executeMovementCrossfade();
+    } else if (newState === 'QUIET' && this.currentState === 'EXPLORATION') {
+      // Smooth movement crossfade to quiet harps, defer musical phrase chunk change to 8-bar boundary
+      this.executeMovementCrossfade('QUIET');
+      this.pendingStateChange = 'QUIET';
+      console.log('Quiet transition registered. Pending phrase boundary break...');
+    } else if (newState === 'EXPLORATION' && this.currentState === 'QUIET') {
+      // Smooth movement crossfade back to drums, defer chunk change to 8-bar boundary
+      this.executeMovementCrossfade('EXPLORATION');
+      this.pendingStateChange = 'EXPLORATION';
+      console.log('Exploration return registered. Pending phrase boundary break...');
     } else if (newState === 'BATTLE' || newState === 'EXPLORATION' || newState === 'QUIET') {
       // COMBAT ENCOUNTER RULES: Defer execution until the master clock loop hits the 8-bar boundary
       this.pendingStateChange = newState;
-      console.log(`Battle/mode state transition registered (${newState}). Pending phrase boundary break...`);
+      console.log(`State transition registered (${newState}). Pending phrase boundary break...`);
     }
   }
 
   /**
-   * Mid-bar linear volume tracking for running vs standing still
+   * Mid-bar linear volume tracking for quiet/idle vs active exploration
    */
-  executeMovementCrossfade() {
+  executeMovementCrossfade(target = this.currentState) {
     const now = Tone.now();
     const fadeTime = 0.4; // Smooth real-time shift time in seconds
 
-    if (this.currentState === 'IDLE') {
-      // Link stops moving: instantly drop active explore rhythms, bring up quiet harps
+    if (target === 'IDLE' || target === 'QUIET') {
+      // Instantly drop active explore rhythms, bring up quiet harps
       this.gains.explorePercussion.gain.linearRampToValueAtTime(0, now + fadeTime);
       this.gains.idleHarp.gain.linearRampToValueAtTime(1, now + fadeTime);
-    } else if (this.currentState === 'EXPLORATION') {
-      // Link runs again: immediately dial up exploration layers, mute the quiet harp stem
+    } else if (target === 'EXPLORATION') {
+      // Immediately dial up exploration layers, mute the quiet harp stem
       this.gains.explorePercussion.gain.linearRampToValueAtTime(1, now + fadeTime);
       this.gains.idleHarp.gain.linearRampToValueAtTime(0, now + fadeTime);
     }
@@ -437,7 +473,7 @@ export class HyruleSequencer {
         // Mute exploration layer nodes on downbeat
         this.gains.exploreCore.gain.setValueAtTime(1, timelineTime);
         this.gains.exploreCore.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
-        this.gains.explorePercussion.gain.setValueAtTime(this.currentState === 'IDLE' ? 0 : 1, timelineTime);
+        this.gains.explorePercussion.gain.setValueAtTime(this.currentState === 'QUIET' ? 0 : 1, timelineTime);
         this.gains.explorePercussion.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
         this.gains.idleHarp.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
 
@@ -525,7 +561,7 @@ export class HyruleSequencer {
       return quietChunks[Math.floor(Math.random() * quietChunks.length)];
     }
 
-    // EXPLORATION or IDLE: Pick from 8-bar exploration pool
+    // EXPLORATION: Pick from 8-bar exploration pool
     const pool = blockMap.EXPLORATION;
     if (this.explorationCueSequenceIndex === 0) {
       this.explorationCueSequenceIndex = 1;
