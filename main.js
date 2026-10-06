@@ -361,9 +361,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const { y, h } = getNoteYAndHeight(note);
         const colors = getNoteColors(note);
 
+        const isPercMuted = (note.trackType === 'percussion' && cueInfo.currentMode === 'QUIET');
+
         const isCurrentlyPlaying = isPlaying &&
           (note.transportTime <= visualizerSec) &&
-          ((note.transportTime + note.duration) >= visualizerSec);
+          ((note.transportTime + note.duration) >= visualizerSec) &&
+          !isPercMuted;
 
         if (isCurrentlyPlaying) {
           activeNotesHitCount++;
@@ -375,6 +378,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (noteX < PLAYHEAD_X) {
           const fadeAlpha = Math.max(0.12, (noteX + noteW) / (PLAYHEAD_X + noteW));
           ctx.globalAlpha = fadeAlpha;
+        }
+
+        // When in Rest mode, percussion is muted: render faint ghost notes
+        if (isPercMuted) {
+          ctx.globalAlpha = (ctx.globalAlpha !== undefined ? ctx.globalAlpha : 1.0) * 0.2;
         }
 
         ctx.fillStyle = isCurrentlyPlaying ? colors.hit : colors.fill;
@@ -517,8 +525,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (cuePendingTextEl) {
       if (cueInfo.pendingMode) {
+        const modeLabel = (cueInfo.pendingMode === 'BATTLE')
+          ? 'Battle'
+          : (cueInfo.pendingMode === 'QUIET' ? 'Rest' : 'Adventure');
         cuePendingTextEl.style.display = 'inline';
-        cuePendingTextEl.innerText = ` • ⏳ Queued: ${cueInfo.pendingMode} (Bar 8 Downbeat)`;
+        cuePendingTextEl.innerText = ` • ⏳ Queued: ${modeLabel} (Bar 8 Downbeat)`;
       } else {
         cuePendingTextEl.style.display = 'none';
       }

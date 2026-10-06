@@ -603,9 +603,10 @@ body {
 }
 
 .pad-label {
-    font-size: 0.8rem;
+    font-size: clamp(0.7rem, 2.4vw, 0.8rem);
     font-weight: 700;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.2px;
+    white-space: nowrap;
 }
 
 /* Day Mode Active */
@@ -667,7 +668,8 @@ body {
     }
 
     .pad-label {
-        font-size: 0.75rem;
+        font-size: 0.72rem;
+        letter-spacing: 0px;
     }
 
     .start-btn {

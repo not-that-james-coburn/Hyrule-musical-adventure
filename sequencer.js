@@ -256,6 +256,9 @@ export class HyruleSequencer {
     // Initial startup sequence stage tracking
     this.initialSequenceStage = 0; // 0: Morning, 1: Intro, 2: Day 1, 3+: Shuffled
 
+    // Post-battle resolution state ('EXPLORATION' or 'QUIET')
+    this.postBattleState = null;
+
     // Stream notes buffer for continuous right-to-left visualizer
     this.streamNotes = [];
 
@@ -655,25 +658,44 @@ export class HyruleSequencer {
   setState(newState) {
     if (newState === this.currentState && !this.pendingStateChange) return;
 
+    const inCombat = (this.currentState === 'BATTLE' || this.currentState === 'BATTLE_INTRO' || this.currentBlock === blockMap.BATTLE_INTRO);
+
     if (newState === 'QUIET' && this.currentState === 'EXPLORATION') {
       // Immediate volume crossfade mid-bar
       this.executeMovementCrossfade('QUIET');
+      this.currentState = 'QUIET';
       this.pendingStateChange = 'QUIET';
       this.requeueUpcomingPhrase('QUIET');
     } else if (newState === 'EXPLORATION' && this.currentState === 'QUIET') {
-      // Immediate volume crossfade mid-bar
+      // Immediate volume crossfade mid-bar: percussion resumes immediately
       this.executeMovementCrossfade('EXPLORATION');
+      this.currentState = 'EXPLORATION';
       this.pendingStateChange = 'EXPLORATION';
       this.requeueUpcomingPhrase('EXPLORATION');
     } else if (newState === 'BATTLE') {
       this.pendingStateChange = 'BATTLE';
       this.requeueUpcomingPhrase('BATTLE_INTRO');
-    } else if (newState === 'EXPLORATION' && (this.currentState === 'BATTLE' || this.currentState === 'BATTLE_INTRO')) {
+    } else if (newState === 'EXPLORATION' && inCombat) {
+      // Victory flourish before resolving to exploration
       this.pendingStateChange = 'EXPLORATION';
+      this.postBattleState = 'EXPLORATION';
+      this.requeueUpcomingPhrase('BATTLE_OUTRO');
+    } else if (newState === 'QUIET' && inCombat) {
+      // Rest mode selected during Battle:
+      // Play Victory fanfare to triumphantly conclude combat, then seamlessly settle into Quiet!
+      this.pendingStateChange = 'QUIET';
+      this.postBattleState = 'QUIET';
       this.requeueUpcomingPhrase('BATTLE_OUTRO');
     } else if (newState === 'EXPLORATION') {
+      this.executeMovementCrossfade('EXPLORATION');
+      this.currentState = 'EXPLORATION';
       this.pendingStateChange = 'EXPLORATION';
       this.requeueUpcomingPhrase('EXPLORATION');
+    } else if (newState === 'QUIET') {
+      this.executeMovementCrossfade('QUIET');
+      this.currentState = 'QUIET';
+      this.pendingStateChange = 'QUIET';
+      this.requeueUpcomingPhrase('QUIET');
     }
   }
 
@@ -682,14 +704,23 @@ export class HyruleSequencer {
    */
   executeMovementCrossfade(target = this.currentState) {
     const now = Tone.now();
-    const fadeTime = 0.4; // 400ms smooth real-time crossfade
+    const fadeTime = 0.35; // 350ms smooth real-time crossfade
+
+    const percGain = this.gains.explorePercussion.gain;
+    const harpGain = this.gains.idleHarp.gain;
+
+    percGain.cancelScheduledValues(now);
+    percGain.setValueAtTime(percGain.value, now);
+
+    harpGain.cancelScheduledValues(now);
+    harpGain.setValueAtTime(harpGain.value, now);
 
     if (target === 'IDLE' || target === 'QUIET') {
-      this.gains.explorePercussion.gain.linearRampToValueAtTime(0, now + fadeTime);
-      this.gains.idleHarp.gain.linearRampToValueAtTime(1, now + fadeTime);
+      percGain.linearRampToValueAtTime(0, now + fadeTime);
+      harpGain.linearRampToValueAtTime(1, now + fadeTime);
     } else if (target === 'EXPLORATION') {
-      this.gains.explorePercussion.gain.linearRampToValueAtTime(1, now + fadeTime);
-      this.gains.idleHarp.gain.linearRampToValueAtTime(0, now + fadeTime);
+      percGain.linearRampToValueAtTime(1, now + fadeTime);
+      harpGain.linearRampToValueAtTime(0, now + fadeTime);
     }
   }
 
@@ -702,59 +733,84 @@ export class HyruleSequencer {
     if (this.pendingStateChange) {
       if (this.pendingStateChange === 'BATTLE') {
         // Mute exploration layer nodes on downbeat
-        this.gains.exploreCore.gain.setValueAtTime(1, timelineTime);
+        this.gains.exploreCore.gain.setValueAtTime(this.gains.exploreCore.gain.value, timelineTime);
         this.gains.exploreCore.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
-        this.gains.explorePercussion.gain.setValueAtTime(this.currentState === 'QUIET' ? 0 : 1, timelineTime);
+        this.gains.explorePercussion.gain.setValueAtTime(this.gains.explorePercussion.gain.value, timelineTime);
         this.gains.explorePercussion.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
+        this.gains.idleHarp.gain.setValueAtTime(this.gains.idleHarp.gain.value, timelineTime);
         this.gains.idleHarp.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
 
         // Un-mute combat layers on downbeat marker
-        this.gains.battleMusic.gain.setValueAtTime(0, timelineTime);
+        this.gains.battleMusic.gain.setValueAtTime(this.gains.battleMusic.gain.value, timelineTime);
         this.gains.battleMusic.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
 
-        this.currentState = 'BATTLE_INTRO';
+        this.currentState = 'BATTLE';
         this.pendingStateChange = null;
       } else if (this.pendingStateChange === 'EXPLORATION') {
-        if (this.currentState === 'BATTLE' || this.currentState === 'BATTLE_INTRO') {
+        if (this.currentState === 'BATTLE' || this.currentState === 'BATTLE_INTRO' || this.currentBlock === blockMap.BATTLE_INTRO) {
           // Play victory flourish before resolving to exploration
-          this.currentState = 'BATTLE_OUTRO';
+          this.postBattleState = 'EXPLORATION';
           this.pendingStateChange = null;
         } else {
-          this.gains.battleMusic.gain.setValueAtTime(1, timelineTime);
+          this.gains.battleMusic.gain.setValueAtTime(this.gains.battleMusic.gain.value, timelineTime);
           this.gains.battleMusic.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
 
-          this.gains.exploreCore.gain.setValueAtTime(0, timelineTime);
+          this.gains.exploreCore.gain.setValueAtTime(this.gains.exploreCore.gain.value, timelineTime);
           this.gains.exploreCore.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
-          this.gains.explorePercussion.gain.setValueAtTime(0, timelineTime);
+          this.gains.explorePercussion.gain.setValueAtTime(this.gains.explorePercussion.gain.value, timelineTime);
           this.gains.explorePercussion.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
+          this.gains.idleHarp.gain.setValueAtTime(this.gains.idleHarp.gain.value, timelineTime);
           this.gains.idleHarp.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
 
           this.currentState = 'EXPLORATION';
           this.pendingStateChange = null;
         }
       } else if (this.pendingStateChange === 'QUIET') {
-        this.gains.explorePercussion.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
-        this.gains.battleMusic.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
-        this.gains.idleHarp.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
-        this.gains.exploreCore.gain.linearRampToValueAtTime(0.8, timelineTime + fadeTime);
+        if (this.currentState === 'BATTLE' || this.currentState === 'BATTLE_INTRO' || this.currentBlock === blockMap.BATTLE_INTRO) {
+          // Play victory flourish before resolving to quiet
+          this.postBattleState = 'QUIET';
+          this.pendingStateChange = null;
+        } else {
+          this.gains.battleMusic.gain.setValueAtTime(this.gains.battleMusic.gain.value, timelineTime);
+          this.gains.battleMusic.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
 
-        this.currentState = 'QUIET';
-        this.pendingStateChange = null;
+          this.gains.explorePercussion.gain.setValueAtTime(this.gains.explorePercussion.gain.value, timelineTime);
+          this.gains.explorePercussion.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
+          this.gains.idleHarp.gain.setValueAtTime(this.gains.idleHarp.gain.value, timelineTime);
+          this.gains.idleHarp.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
+          this.gains.exploreCore.gain.setValueAtTime(this.gains.exploreCore.gain.value, timelineTime);
+          this.gains.exploreCore.gain.linearRampToValueAtTime(0.8, timelineTime + fadeTime);
+
+          this.currentState = 'QUIET';
+          this.pendingStateChange = null;
+        }
       }
     } else {
-      // Natural chain transitions when intro or victory flourish completes
-      if (this.currentState === 'BATTLE_INTRO') {
-        this.currentState = 'BATTLE';
-      } else if (this.currentState === 'BATTLE_OUTRO') {
-        this.gains.battleMusic.gain.setValueAtTime(1, timelineTime);
+      // Natural chain transitions when Victory flourish completes
+      if (this.currentBlock === blockMap.BATTLE_OUTRO) {
+        const target = this.postBattleState || 'EXPLORATION';
+        this.postBattleState = null;
+
+        this.gains.battleMusic.gain.setValueAtTime(this.gains.battleMusic.gain.value, timelineTime);
         this.gains.battleMusic.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
 
-        this.gains.exploreCore.gain.setValueAtTime(0, timelineTime);
-        this.gains.exploreCore.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
-        this.gains.explorePercussion.gain.setValueAtTime(0, timelineTime);
-        this.gains.explorePercussion.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
-
-        this.currentState = 'EXPLORATION';
+        if (target === 'QUIET') {
+          this.gains.exploreCore.gain.setValueAtTime(this.gains.exploreCore.gain.value, timelineTime);
+          this.gains.exploreCore.gain.linearRampToValueAtTime(0.8, timelineTime + fadeTime);
+          this.gains.explorePercussion.gain.setValueAtTime(this.gains.explorePercussion.gain.value, timelineTime);
+          this.gains.explorePercussion.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
+          this.gains.idleHarp.gain.setValueAtTime(this.gains.idleHarp.gain.value, timelineTime);
+          this.gains.idleHarp.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
+          this.currentState = 'QUIET';
+        } else {
+          this.gains.exploreCore.gain.setValueAtTime(this.gains.exploreCore.gain.value, timelineTime);
+          this.gains.exploreCore.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
+          this.gains.explorePercussion.gain.setValueAtTime(this.gains.explorePercussion.gain.value, timelineTime);
+          this.gains.explorePercussion.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
+          this.gains.idleHarp.gain.setValueAtTime(this.gains.idleHarp.gain.value, timelineTime);
+          this.gains.idleHarp.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
+          this.currentState = 'EXPLORATION';
+        }
       }
     }
   }
@@ -764,9 +820,15 @@ export class HyruleSequencer {
    */
   selectBlockForState(targetState = this.currentState) {
     if (targetState === 'BATTLE_INTRO') {
+      if (this.currentBlock === blockMap.BATTLE_INTRO) {
+        return this.battleBag.next();
+      }
       return blockMap.BATTLE_INTRO;
     }
     if (targetState === 'BATTLE_OUTRO') {
+      if (this.currentBlock === blockMap.BATTLE_OUTRO) {
+        return (this.postBattleState === 'QUIET') ? this.quietBag.next() : this.explorationBag.next();
+      }
       return blockMap.BATTLE_OUTRO;
     }
     if (targetState === 'BATTLE') {
@@ -855,6 +917,45 @@ export class HyruleSequencer {
       });
     });
 
+    // If the block is a Quiet/Rest cue with no native drums in the MIDI,
+    // schedule the master 8-bar galloping snare loop on the explorePercussion layer.
+    // In Rest mode, explorePercussion gain is 0 (silent).
+    // The moment the player activates Adventure mode, explorePercussion un-mutes
+    // and the drums resume immediately in perfect tempo without waiting for the next cue!
+    if (chosenBlock.mode === 'QUIET') {
+      const gallopTrack = this.midiData.tracks.find(t => t.channel === 9 && t.notes && t.notes.length > 500);
+      if (gallopTrack) {
+        const dayStartTicks = 17 * ticksPerBar;
+        const dayEndTicks = 25 * ticksPerBar;
+        const dayPercNotes = gallopTrack.notes.filter(n => n.ticks >= dayStartTicks && n.ticks < dayEndTicks);
+
+        dayPercNotes.forEach(note => {
+          const noteFraction = (note.ticks - dayStartTicks) / totalBlockTicks;
+          const relativeSec = noteFraction * blockDurationSec;
+          const noteTransportTime = startTransportSec + relativeSec;
+          const noteDurationSec = (note.durationTicks / totalBlockTicks) * blockDurationSec;
+
+          const eventId = transport.scheduleOnce((time) => {
+            this.triggerSafeNote('percussion', note, noteDurationSec, time);
+          }, noteTransportTime);
+
+          eventIds.push(eventId);
+
+          this.streamNotes.push({
+            name: note.name,
+            midi: note.midi,
+            velocity: note.velocity,
+            transportTime: noteTransportTime,
+            duration: Math.max(0.08, noteDurationSec),
+            trackType: 'percussion',
+            mode: 'QUIET',
+            cueId: chosenBlock.id,
+            phraseIdx: phraseIdx
+          });
+        });
+      }
+    }
+
     this.phraseEventIds[phraseIdx] = eventIds;
   }
 
@@ -897,6 +998,14 @@ export class HyruleSequencer {
     this.currentBlockDurationSec = this.BLOCK_DURATION_SEC;
     currentBlockStartTransportSec = startTransportSec;
     currentBlockDurationSec = this.BLOCK_DURATION_SEC;
+
+    // Immediately advance state so lookahead pre-queuing selects the next sequence
+    // rather than repeating BATTLE_INTRO or BATTLE_OUTRO twice back-to-back
+    if (this.currentBlock === blockMap.BATTLE_INTRO) {
+      this.currentState = 'BATTLE';
+    } else if (this.currentBlock === blockMap.BATTLE_OUTRO) {
+      this.currentState = this.postBattleState || 'EXPLORATION';
+    }
 
     // 3. Pre-queue the NEXT upcoming block ahead of time (1 block lookahead)
     const nextPhraseIdx = this.phraseIndex + 1;
@@ -958,6 +1067,7 @@ export class HyruleSequencer {
     transport.cancel(0);
     this.repeatEventId = null;
     this.phraseIndex = 0;
+    this.postBattleState = null;
     this.streamNotes = [];
     this.phraseEventIds = {};
     if (this.soundRack && typeof this.soundRack.releaseAll === 'function') {
