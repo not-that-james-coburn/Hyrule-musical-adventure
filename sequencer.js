@@ -211,135 +211,7 @@ class ShuffleBag {
   }
 }
 
-/**
- * Dedicated, Responsive N64 Ocarina Patch
- * Emulates Koji Kondo's signature Zelda: OoT ocarina audio architecture:
- * 1. Pure whistle tone: Triangle oscillator with 15ms portamento pitch sliding
- * 2. Breathiness: Filtered white noise (lowpass 1200Hz, 0.04 gain)
- * 3. N64 Envelope: 160ms smooth air-rise attack, 100ms decay, 0.8 sustain, 280ms lingering release
- * 4. Vibrato LFO: 5.5Hz pitch vibrato with +/-25 cents depth
- */
-class N64OcarinaVoice {
-  constructor(vibratoLFO, breathNoiseSource, outputNode) {
-    // 1. Core whistle tone oscillator with portamento and amplitude envelope
-    this.synth = new Tone.Synth({
-      oscillator: {
-        type: 'triangle' // Triangle wave provides the core pure whistle tone
-      },
-      envelope: {
-        attack: 0.16,  // Smooth air-rise ramp (160ms)
-        decay: 0.1,    // 100ms decay
-        sustain: 0.8,  // 80% sustained whistle body
-        release: 0.28  // Naturally lingering fade (280ms)
-      },
-      portamento: 0.015 // 15ms glide prevents stepping notes
-    });
 
-    // 4. Hook up LFO for Pitch Vibrato to detune (-25 to +25 cents at 5.5Hz)
-    vibratoLFO.connect(this.synth.detune);
-    this.synth.connect(outputNode);
-
-    // 1 & 2. Gated breath noise envelope
-    this.noiseEnvelope = new Tone.AmplitudeEnvelope({
-      attack: 0.16,
-      decay: 0.1,
-      sustain: 0.8,
-      release: 0.28
-    });
-    breathNoiseSource.connect(this.noiseEnvelope);
-    this.noiseEnvelope.connect(outputNode);
-  }
-
-  triggerAttackRelease(noteName, durationSec, time, velocity = 0.8, glideFromFreq = null) {
-    this.synth.triggerAttackRelease(noteName, durationSec, time, velocity);
-    if (glideFromFreq) {
-      try {
-        const targetFreq = Tone.Frequency(noteName).toFrequency();
-        this.synth.frequency.cancelScheduledValues(time);
-        this.synth.frequency.setValueAtTime(glideFromFreq, time);
-        this.synth.frequency.exponentialRampTo(targetFreq, 0.015, time);
-      } catch (e) {}
-    }
-    this.noiseEnvelope.triggerAttackRelease(durationSec, time, velocity);
-  }
-
-  release(time) {
-    try { this.synth.triggerRelease(time); } catch (e) {}
-    try { this.noiseEnvelope.triggerRelease(time); } catch (e) {}
-  }
-}
-
-export class N64Ocarina {
-  constructor() {
-    this.loaded = true;
-    this.volume = new Tone.Volume(-2.0);
-    this.output = new Tone.Gain(1.0).connect(this.volume);
-
-    // 1. Add "Breathiness" (Koji Kondo blended low-level white noise with the waveform)
-    this.breathNoise = new Tone.Noise('white');
-    this.noiseFilter = new Tone.Filter(1200, 'lowpass');
-    this.noiseGain = new Tone.Gain(0.04);
-    this.breathNoise.connect(this.noiseFilter).connect(this.noiseGain);
-    try {
-      this.breathNoise.start();
-    } catch (e) {}
-
-    // 4. Hook up a LFO for Pitch Vibrato (5.5Hz speed, +/-25 cents depth)
-    this.vibratoLFO = new Tone.LFO({
-      frequency: 5.5,
-      min: -25,
-      max: 25
-    });
-    try {
-      this.vibratoLFO.start();
-    } catch (e) {}
-
-    // Polyphonic voice pool: 3 voices to allow natural lingering releases without voice truncation
-    this.voices = [
-      new N64OcarinaVoice(this.vibratoLFO, this.noiseGain, this.output),
-      new N64OcarinaVoice(this.vibratoLFO, this.noiseGain, this.output),
-      new N64OcarinaVoice(this.vibratoLFO, this.noiseGain, this.output)
-    ];
-    this.voiceIndex = 0;
-    this.lastFreq = null;
-    this.lastEndTime = 0;
-  }
-
-  start() {
-    try { this.breathNoise.start(); } catch (e) {}
-    try { this.vibratoLFO.start(); } catch (e) {}
-  }
-
-  connect(destination) {
-    this.volume.connect(destination);
-    return this;
-  }
-
-  triggerAttackRelease(noteName, durationSec, time, velocity = 0.8) {
-    const v = this.voices[this.voiceIndex];
-    this.voiceIndex = (this.voiceIndex + 1) % this.voices.length;
-
-    let glideFrom = null;
-    try {
-      const targetFreq = Tone.Frequency(noteName).toFrequency();
-      if (this.lastFreq && (time <= this.lastEndTime + 0.08)) {
-        glideFrom = this.lastFreq;
-      }
-      this.lastFreq = targetFreq;
-      this.lastEndTime = time + durationSec;
-    } catch (e) {}
-
-    v.triggerAttackRelease(noteName, durationSec, time, velocity, glideFrom);
-  }
-
-  releaseAll() {
-    this.lastFreq = null;
-    this.lastEndTime = 0;
-    this.voices.forEach(v => {
-      try { v.release(); } catch (e) {}
-    });
-  }
-}
 
 export class HyruleSequencer {
   constructor() {
@@ -407,50 +279,13 @@ export class HyruleSequencer {
       transport.bpm.value = this.BPM;
       transport.timeSignature = [4, 4];
 
-      // 1. Output Pipeline: N64 DSP Mixer & Mastering Chain
-      // Prevents digital clipping, glues orchestral instruments, rolls off shrill high-end
+      // 1. Direct Output Pipeline: Master Limiter & Volume
+      // Clean, uncolored master chain adhering strictly to original composition audio
       this.masterLimiter = new Tone.Limiter(-0.5).toDestination();
+      this.masterVolume = new Tone.Volume(-2.0).connect(this.masterLimiter);
+      this.masterPreBus = new Tone.Gain(1.0).connect(this.masterVolume);
 
-      this.masterVolume = new Tone.Volume(-2.5).connect(this.masterLimiter);
-
-      this.masterCompressor = new Tone.Compressor({
-        threshold: -18,
-        ratio: 2.8,
-        attack: 0.03,
-        release: 0.25,
-        knee: 6
-      }).connect(this.masterVolume);
-
-      // 1. Unified Global Spatial Convolution Reverb Matrix
-      // 1.8s room decay scale with 15% wet/dry mix masks sterile digital samples
-      // and produces the expansive, echoing Hyrule Field acoustic chamber
-      this.masterReverb = new Tone.Reverb({
-        decay: 1.8,
-        preDelay: 0.015,
-        wet: 0.15
-      }).connect(this.masterCompressor);
-
-      // Analog reconstruction low-pass filter (emulating authentic N64 DAC filter)
-      this.masterWarmthFilter = new Tone.Filter({
-        frequency: 14000,
-        type: 'lowpass',
-        rolloff: -12,
-        Q: 0.7
-      }).connect(this.masterReverb);
-
-      // 3-Band Equalizer: authentic N64 orchestral balance with natural high clarity
-      this.masterEQ = new Tone.EQ3({
-        low: 1.5,
-        mid: 0.0,
-        high: -1.5,
-        lowFrequency: 300,
-        highFrequency: 4200
-      }).connect(this.masterWarmthFilter);
-
-      // Master Pre-Bus summing stem gains
-      this.masterPreBus = new Tone.Gain(1.0).connect(this.masterEQ);
-
-      // Connect localized stems into Master Pre-Bus
+      // Connect localized stems directly into Master Pre-Bus
       this.gains.exploreCore.connect(this.masterPreBus);
       this.gains.explorePercussion.connect(this.masterPreBus);
       this.gains.idleHarp.connect(this.masterPreBus);
@@ -465,7 +300,7 @@ export class HyruleSequencer {
       // Wait for soundfont samples to buffer with timeout protection
       try {
         await Promise.race([
-          Promise.all([Tone.loaded(), this.masterReverb ? (this.masterReverb.ready || this.masterReverb.generate()) : Promise.resolve()]),
+          Tone.loaded(),
           new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Sample loading timed out after 20s')), 20000)
           )
@@ -553,6 +388,7 @@ export class HyruleSequencer {
   createSoundfontRack() {
     // Calibrated instrument balance for authentic N64 Zelda SoundFont (00_ALL.sf2)
     const sampleSpecs = {
+      ocarina: { filter: k => k.startsWith('Ocarina'), defaultVol: -4.0 },
       piano: { filter: k => k.startsWith('Piano'), defaultVol: -5.5 },
       trombone: { filter: k => k.startsWith('Trombone'), defaultVol: -4.5 },
       trumpet: { filter: k => k.startsWith('Trumpet'), defaultVol: -5.0 },
@@ -575,23 +411,6 @@ export class HyruleSequencer {
       tom: { filter: k => k.startsWith('Bent Drum') || k.startsWith('Ethnic Drum Kit') || k.startsWith('Timpani Low'), defaultVol: -4.0 }
     };
 
-    // Sub-bus filters to tame metallic brass bite and upper-octave woodwind harshness
-    this.brassFilter = new Tone.Filter({
-      frequency: 10500,
-      type: 'lowpass',
-      rolloff: -12
-    });
-    this.brassFilter.connect(this.gains.exploreCore);
-    this.brassFilter.connect(this.gains.battleMusic);
-
-    this.woodwindFilter = new Tone.Filter({
-      frequency: 12000,
-      type: 'lowpass',
-      rolloff: -12
-    });
-    this.woodwindFilter.connect(this.gains.exploreCore);
-    this.woodwindFilter.connect(this.gains.battleMusic);
-
     const samplers = {};
     this.instGains = {};
 
@@ -599,25 +418,20 @@ export class HyruleSequencer {
       this.instGains[instKey] = new Tone.Gain(1.0);
     }
     this.instGains.percussion = new Tone.Gain(1.0);
-    this.instGains.ocarina = new Tone.Gain(1.0);
 
     for (const [instKey, spec] of Object.entries(sampleSpecs)) {
       const urls = this.buildSamplerUrls(spec.filter);
       if (Object.keys(urls).length > 0) {
         const sampler = new Tone.Sampler({ urls, baseUrl: this.soundfontBaseUrl });
-        sampler.volume.value = spec.defaultVol;
+        if (typeof spec.defaultVol === 'number') {
+          sampler.volume.value = spec.defaultVol;
+        }
 
         // Route sampler into its dedicated instrument gain node
         sampler.connect(this.instGains[instKey]);
 
-        // Routing matrix through tone-shaping filters and dynamic stems:
-        if (instKey === 'trumpet' || instKey === 'trombone' || instKey === 'brassSection') {
-          // Route brass through dedicated anti-glare warmth filter
-          this.instGains[instKey].connect(this.brassFilter);
-        } else if (instKey === 'flute' || instKey === 'tenorSax') {
-          // Route lead woodwinds through smooth roll-off filter
-          this.instGains[instKey].connect(this.woodwindFilter);
-        } else if (instKey === 'snare' || instKey === 'tom' || instKey === 'hihat' || instKey === 'kick') {
+        // Direct routing to dynamic stems without artificial filtering:
+        if (instKey === 'snare' || instKey === 'tom' || instKey === 'hihat' || instKey === 'kick') {
           this.instGains[instKey].connect(this.gains.explorePercussion);
           this.instGains[instKey].connect(this.gains.battleMusic);
         } else if (instKey === 'harp') {
@@ -632,52 +446,16 @@ export class HyruleSequencer {
       }
     }
 
-    // Dedicated, responsive N64 Ocarina synthesis engine (Koji Kondo patch architecture:
-    // Pure triangle whistle + 15ms portamento + 1200Hz filtered breath noise + 5.5Hz pitch vibrato LFO)
-    const ocarinaPatch = new N64Ocarina();
-    ocarinaPatch.connect(this.instGains.ocarina);
-    this.instGains.ocarina.connect(this.woodwindFilter);
-    samplers.ocarina = ocarinaPatch;
-
-    // High-performance monophonic drum synths: zero voice leakage or PolySynth node accumulation
-    const kickSynth = new Tone.MembraneSynth({
-      pitchDecay: 0.05,
-      octaves: 4,
-      oscillator: { type: 'sine' },
-      envelope: { attack: 0.001, decay: 0.22, sustain: 0, release: 0.12 }
-    });
-    kickSynth.volume.value = -7.0;
-    kickSynth.connect(this.instGains.kick);
-
-    const hihatSynth = new Tone.MetalSynth({
-      frequency: 180,
-      envelope: { attack: 0.001, decay: 0.04, release: 0.04 },
-      harmonicity: 3.2,
-      modulationIndex: 10,
-      resonance: 1400,
-      octaves: 1.2
-    });
-    hihatSynth.volume.value = -26;
-    hihatSynth.connect(this.instGains.hihat);
-
     function releaseAll() {
       Object.values(samplers).forEach(s => {
         if (s && typeof s.releaseAll === 'function') {
           try { s.releaseAll(); } catch (e) {}
         }
       });
-      if (kickSynth && typeof kickSynth.triggerRelease === 'function') {
-        try { kickSynth.triggerRelease(); } catch (e) {}
-      }
-      if (hihatSynth && typeof hihatSynth.triggerRelease === 'function') {
-        try { hihatSynth.triggerRelease(); } catch (e) {}
-      }
     }
 
     return {
       samplers,
-      kickSynth,
-      hihatSynth,
       instGains: this.instGains,
       releaseAll
     };
@@ -759,39 +537,29 @@ export class HyruleSequencer {
     if (!this.soundRack) return;
     const now = Tone.now();
     const safeTime = Math.max(time, now);
-    const dur = Math.max(0.06, durationSec);
-    const vel = typeof note.velocity === 'number' ? Math.max(0.1, Math.min(1.0, note.velocity)) : 0.8;
+    const dur = Math.max(0.04, durationSec);
+    const vel = (typeof note.velocity === 'number' && !isNaN(note.velocity))
+      ? Math.max(0.01, Math.min(1.0, note.velocity))
+      : 0.8;
 
     if (sampler === 'percussion') {
       const midiPitch = note.midi;
       if (midiPitch === 35 || midiPitch === 36) {
-        // Authentic N64 Kick Drum (with synth fallback)
-        try {
-          const kickSampler = this.soundRack.samplers.kick;
-          if (kickSampler && kickSampler.loaded) {
-            kickSampler.triggerAttackRelease('C2', dur, safeTime, vel);
-          } else {
-            this.soundRack.kickSynth.triggerAttackRelease('C1', dur, safeTime, vel);
-          }
-        } catch (e) {}
+        const kickSampler = this.soundRack.samplers.kick;
+        if (kickSampler && kickSampler.loaded) {
+          try { kickSampler.triggerAttackRelease('C2', dur, safeTime, vel); } catch (e) {}
+        }
       } else if (midiPitch === 38 || midiPitch === 40) {
-        // Authentic N64 Snare (Snare High / Snare Low)
         const snareSampler = this.soundRack.samplers.snare;
         if (snareSampler && snareSampler.loaded) {
           try { snareSampler.triggerAttackRelease(midiPitch === 38 ? 'B3' : 'C4', dur, safeTime, vel); } catch (e) {}
         }
       } else if (midiPitch === 42 || midiPitch === 44 || midiPitch === 46) {
-        // Authentic N64 Hi-Hat / Cymbal (with synth fallback)
-        try {
-          const hihatSampler = this.soundRack.samplers.hihat;
-          if (hihatSampler && hihatSampler.loaded) {
-            hihatSampler.triggerAttackRelease('C4', dur, safeTime, vel * 0.7);
-          } else {
-            this.soundRack.hihatSynth.triggerAttackRelease(dur, safeTime, vel * 0.7);
-          }
-        } catch (e) {}
+        const hihatSampler = this.soundRack.samplers.hihat;
+        if (hihatSampler && hihatSampler.loaded) {
+          try { hihatSampler.triggerAttackRelease('C4', dur, safeTime, vel); } catch (e) {}
+        }
       } else if (midiPitch >= 41 && midiPitch <= 50) {
-        // Authentic N64 Toms / Timpani
         const tomSampler = this.soundRack.samplers.tom;
         if (tomSampler && tomSampler.loaded) {
           try { tomSampler.triggerAttackRelease('C4', dur, safeTime, vel); } catch (e) {}
@@ -807,9 +575,7 @@ export class HyruleSequencer {
     } else {
       if (sampler && sampler.loaded) {
         try {
-          // Acoustic register scaling for piercing high notes (e.g. ocarina/woodwinds in octaves 6-7)
-          const scaledVel = (note.midi && note.midi > 84) ? vel * 0.82 : vel;
-          sampler.triggerAttackRelease(note.name, dur, safeTime, scaledVel);
+          sampler.triggerAttackRelease(note.name, dur, safeTime, vel);
         } catch (e) {}
       }
     }
@@ -1071,16 +837,20 @@ export class HyruleSequencer {
    */
   getBlockDuration(block) {
     if (!block) return this.BLOCK_DURATION_SEC;
-    if (block === blockMap.MORNING || (block.id && block.id.startsWith('Sunrise'))) {
-      return 16.867382; // 8 bars with rubato tempo variations (280 -> 320 -> 160 -> 100 -> 95 BPM)
-    }
-    return this.BLOCK_DURATION_SEC; // Exact 12.8s for Intro and all subsequent 8-bar blocks at 150 BPM
+    const ticksPerBar = 4 * this.PPQ;
+    const startTicks = block.startBar * ticksPerBar;
+    const endTicks = block.endBar * ticksPerBar;
+    const startTimeSec = this.ticksToTime(startTicks);
+    const endTimeSec = this.ticksToTime(endTicks);
+    return Math.max(0.1, endTimeSec - startTimeSec);
   }
 
   /**
    * Schedule all MIDI notes in an 8-measure block onto Tone.Transport timeline.
-   * Injects MIDI JSON CC#7 (Volume) and CC#11 (Expression) automation curves to eliminate track imbalance
-   * (preventing strings from overpowering ocarina lead), and synchronizes note events exactly with 8-bar measures.
+   * Strictly adheres to all parameters in hyrule_field_midi.json:
+   * exact pitches (note.name, note.midi), exact durations (note.duration),
+   * exact velocities (note.velocity), exact relative timing (note.time - blockStartMidiSec),
+   * and CC#7 / CC#11 curves.
    */
   scheduleNotesForBlock(chosenBlock, phraseIdx, startTransportSec) {
     if (!chosenBlock || !this.midiData || !this.midiData.tracks) return;
@@ -1088,18 +858,15 @@ export class HyruleSequencer {
     const ticksPerBar = 4 * this.PPQ;
     const startTicks = chosenBlock.startBar * ticksPerBar;
     const endTicks = chosenBlock.endBar * ticksPerBar;
-    const totalBlockTicks = endTicks - startTicks; // Exactly 8 bars in ticks (30720 ticks)
-
-    const isMorning = (chosenBlock === blockMap.MORNING || (chosenBlock.id && chosenBlock.id.startsWith('Sunrise')));
-    const blockDurationSec = this.getBlockDuration(chosenBlock);
-    const morningBaseMidiTime = 1.2; // First note in Morning starts at tick 3840 (1.200s in MIDI)
+    const blockStartMidiSec = this.ticksToTime(startTicks);
+    const blockEndMidiSec = this.ticksToTime(endTicks);
+    const blockDurationSec = Math.max(0.1, blockEndMidiSec - blockStartMidiSec);
 
     const eventIds = [];
     const transport = Tone.getTransport();
 
     // -------------------------------------------------------------------------
     // 1. Parse & Inject MIDI JSON CC#7 (Volume) & CC#11 (Expression) Automation Curves
-    // Roland SC-88 / N64 expression parser: captures sweeping curves and sets gain
     // -------------------------------------------------------------------------
     const processedInstGains = new Set();
 
@@ -1122,14 +889,20 @@ export class HyruleSequencer {
 
       if (blockCc11.length > 0) {
         processedInstGains.add(instKey);
+        const firstCcRelSec = Math.max(0, blockCc11[0].time - blockStartMidiSec);
+        if (firstCcRelSec > 0.02) {
+          const firstRaw = blockCc11[0].value;
+          const firstVal = (firstRaw > 1) ? (firstRaw / 127) : firstRaw;
+          const initGain = baseCc7 * firstVal;
+          const evId = transport.scheduleOnce((time) => {
+            gainNode.gain.setValueAtTime(initGain, time);
+          }, startTransportSec);
+          eventIds.push(evId);
+        }
+
         blockCc11.forEach(ccEvent => {
-          let ccTransportTime;
-          if (isMorning && typeof ccEvent.time === 'number') {
-            ccTransportTime = startTransportSec + Math.max(0, ccEvent.time - morningBaseMidiTime);
-          } else {
-            const noteFraction = (ccEvent.ticks - startTicks) / totalBlockTicks;
-            ccTransportTime = startTransportSec + (noteFraction * blockDurationSec);
-          }
+          const ccRelSec = Math.max(0, ccEvent.time - blockStartMidiSec);
+          const ccTransportTime = startTransportSec + ccRelSec;
           const raw11 = ccEvent.value;
           const exprVal = (raw11 > 1) ? (raw11 / 127) : raw11;
           const targetGain = baseCc7 * exprVal;
@@ -1140,6 +913,7 @@ export class HyruleSequencer {
           eventIds.push(evId);
         });
       } else if (!processedInstGains.has(instKey)) {
+        processedInstGains.add(instKey);
         // Reset gain to baseline CC#7 volume at block boundary
         const evId = transport.scheduleOnce((time) => {
           gainNode.gain.setValueAtTime(baseCc7, time);
@@ -1149,131 +923,45 @@ export class HyruleSequencer {
     });
 
     // -------------------------------------------------------------------------
-    // 2. Schedule Note Events within the 8-measure block
+    // 2. Schedule Note Events strictly adhering to MIDI parameters
     // -------------------------------------------------------------------------
     this.midiData.tracks.forEach((track, trIdx) => {
       const trackCategory = this.getTrackCategory(track, trIdx);
       const sampler = this.getSamplerForTrack(trIdx);
-      const isOcarina = (trIdx === 25 || this.getInstrumentKeyForTrack(trIdx) === 'ocarina');
-      const isFlute = (trIdx === 13 || this.getInstrumentKeyForTrack(trIdx) === 'flute');
 
       const notesInBlock = track.notes.filter(note =>
         note.ticks >= startTicks && note.ticks < endTicks
       );
 
       notesInBlock.forEach((note) => {
-        let noteTransportTime;
-        let noteDurationSec;
+        // Strict adherence to note.time and note.duration from hyrule_field_midi.json
+        const noteRelSec = Math.max(0, note.time - blockStartMidiSec);
+        const noteTransportTime = startTransportSec + noteRelSec;
+        const noteDurationSec = (typeof note.duration === 'number' && note.duration > 0)
+          ? note.duration
+          : Math.max(0.04, (note.durationTicks / (endTicks - startTicks)) * blockDurationSec);
 
-        if (isMorning) {
-          // Preserve authentic tempo variations for Morning: first notes play as true eighth notes at 280 BPM (~107ms)
-          const relSec = Math.max(0, note.time - morningBaseMidiTime);
-          noteTransportTime = startTransportSec + relSec;
-          noteDurationSec = (typeof note.duration === 'number' && note.duration > 0)
-            ? note.duration
-            : (note.durationTicks / totalBlockTicks) * blockDurationSec;
-        } else {
-          // Strict time-based segments (12.8s per 8 bars at 150 BPM) for all subsequent cues
-          const noteFraction = (note.ticks - startTicks) / totalBlockTicks;
-          const relativeSec = noteFraction * blockDurationSec;
-          noteTransportTime = startTransportSec + relativeSec;
-          noteDurationSec = (note.durationTicks / totalBlockTicks) * blockDurationSec;
-          if (isNaN(noteDurationSec) || noteDurationSec <= 0) {
-            noteDurationSec = note.duration || 0.2;
-          }
-        }
-
-        // Authentic pitch transposition:
-        // 1. Morning intro: Ocarina (Track 25) was written in high octave 6-7 (A6..G7 / MIDI 89..103).
-        //    Transposing down 12 semitones (-1 octave) restores the bright singing soprano ocarina (A5, F5, D6),
-        //    correcting the previous issue where -24 made it sound too low (A4/F4/D5).
-        // 2. Other cues: Ocarina in other cues (e.g. Day 6 pastoral rest, Night 1) is transposed down
-        //    24 semitones (-2 octaves) to maintain Link's warm alto/tenor ocarina register (B3..G4) and eliminate high shrillness.
-        // 3. Lead flutes in other cues (e.g. Intro fanfare) when in octave 6+ (>= 80) are transposed down
-        //    12 semitones to blend with the brass/strings without piercing high frequencies.
-        let playMidi = note.midi;
-        let playName = note.name;
-        if (isOcarina) {
-          if (isMorning) {
-            if (note.midi >= 80) {
-              playMidi = note.midi - 12; // -1 octave: A5, F5, D6 (soprano ocarina)
-              playName = midiToNoteName(playMidi);
-            }
-          } else {
-            if (note.midi >= 80) {
-              playMidi = note.midi - 24; // -2 octaves: B3, C4, D4... (alto register)
-              playName = midiToNoteName(playMidi);
-            }
-          }
-        } else if (isFlute && !isMorning) {
-          if (note.midi >= 80) {
-            playMidi = note.midi - 12; // Tame shrill high flute notes in other cues
-            playName = midiToNoteName(playMidi);
-          }
-        }
-
-        const noteToPlay = (playMidi !== note.midi)
-          ? { ...note, midi: playMidi, name: playName }
-          : note;
-
-        // Precise lookahead scheduling on Tone.Transport
+        // Strict adherence to note.name, note.midi, note.velocity (zero transpositions/alterations)
         const eventId = transport.scheduleOnce((time) => {
-          this.triggerSafeNote(sampler, noteToPlay, noteDurationSec, time);
+          this.triggerSafeNote(sampler, note, noteDurationSec, time);
         }, noteTransportTime);
 
         eventIds.push(eventId);
 
         // Add note to visualizer stream
         this.streamNotes.push({
-          name: playName,
-          midi: playMidi,
+          name: note.name,
+          midi: note.midi,
           velocity: note.velocity,
           transportTime: noteTransportTime,
           duration: Math.max(0.08, noteDurationSec),
-          trackType: trackCategory, // 'melody' | 'bass' | 'percussion'
-          mode: chosenBlock.mode, // 'EXPLORATION' | 'QUIET' | 'BATTLE'
+          trackType: trackCategory,
+          mode: chosenBlock.mode,
           cueId: chosenBlock.id,
           phraseIdx: phraseIdx
         });
       });
     });
-
-    // -------------------------------------------------------------------------
-    // 3. Galloping Snare Drum Loop for Quiet/Rest Cues
-    // -------------------------------------------------------------------------
-    if (chosenBlock.mode === 'QUIET') {
-      const gallopTrack = this.midiData.tracks.find(t => t.channel === 9 && t.notes && t.notes.length > 500);
-      if (gallopTrack) {
-        const dayStartTicks = 17 * ticksPerBar;
-        const dayEndTicks = 25 * ticksPerBar;
-        const dayPercNotes = gallopTrack.notes.filter(n => n.ticks >= dayStartTicks && n.ticks < dayEndTicks);
-
-        dayPercNotes.forEach(note => {
-          const noteFraction = (note.ticks - dayStartTicks) / totalBlockTicks;
-          const relativeSec = noteFraction * blockDurationSec;
-          const noteTransportTime = startTransportSec + relativeSec;
-          const noteDurationSec = (note.durationTicks / totalBlockTicks) * blockDurationSec;
-
-          const eventId = transport.scheduleOnce((time) => {
-            this.triggerSafeNote('percussion', note, noteDurationSec, time);
-          }, noteTransportTime);
-
-          eventIds.push(eventId);
-
-          this.streamNotes.push({
-            name: note.name,
-            midi: note.midi,
-            velocity: note.velocity,
-            transportTime: noteTransportTime,
-            duration: Math.max(0.08, noteDurationSec),
-            trackType: 'percussion',
-            mode: 'QUIET',
-            cueId: chosenBlock.id,
-            phraseIdx: phraseIdx
-          });
-        });
-      }
-    }
 
     this.phraseEventIds[phraseIdx] = eventIds;
   }
@@ -1304,7 +992,7 @@ export class HyruleSequencer {
 
   /**
    * Master 8-bar phrase downbeat clock: dynamically tracks the active block's completion
-   * (Morning 16.867s rubato), and phase-locks precisely to 12.8s measures from Intro onwards.
+   * and phase-locks precisely to measure boundaries.
    */
   onPhraseBoundary(timelineTime) {
     const audioTime = timelineTime || Tone.now();
@@ -1363,9 +1051,6 @@ export class HyruleSequencer {
 
   async startEngine() {
     await Tone.start();
-    if (this.soundRack?.samplers?.ocarina?.start) {
-      this.soundRack.samplers.ocarina.start();
-    }
     const transport = Tone.getTransport();
 
     if (transport.state !== 'started') {
@@ -1435,74 +1120,27 @@ export class HyruleSequencer {
   }
 
   setMasterWarmth(cutoffHz) {
-    if (this.masterWarmthFilter) {
-      this.masterWarmthFilter.frequency.value = Math.max(4000, Math.min(20000, cutoffHz));
-    }
+    // Artificial tone coloration removed per user instruction
   }
 
   setMasterTreble(trebleDb) {
-    if (this.masterEQ) {
-      this.masterEQ.high.value = Math.max(-14, Math.min(4, trebleDb));
-    }
+    // Artificial EQ coloration removed per user instruction
   }
 
   setMasterReverbWet(wetRatio) {
-    if (this.masterReverb) {
-      this.masterReverb.wet.value = Math.max(0, Math.min(0.8, wetRatio));
-    }
+    // Artificial reverb coloration removed per user instruction
   }
 
   setMixerPreset(presetName) {
-    switch (presetName) {
-      case 'n64': // Authentic N64 Warmth (Default & Recommended)
-        this.setMasterWarmth(11500);
-        this.setMasterTreble(-4.0);
-        this.setMasterReverbWet(0.15);
-        this.setMasterVolume(-2.5);
-        if (this.masterEQ) {
-          this.masterEQ.low.value = 2.2;
-          this.masterEQ.mid.value = -1.2;
-        }
-        break;
-      case 'hall': // Concert Hall
-        this.setMasterWarmth(10000);
-        this.setMasterTreble(-5.5);
-        this.setMasterReverbWet(0.36);
-        this.setMasterVolume(-3.0);
-        if (this.masterEQ) {
-          this.masterEQ.low.value = 3.0;
-          this.masterEQ.mid.value = -1.5;
-        }
-        break;
-      case 'retro': // Vintage CRT / TV Speaker Warmth
-        this.setMasterWarmth(8500);
-        this.setMasterTreble(-6.0);
-        this.setMasterReverbWet(0.16);
-        this.setMasterVolume(-2.0);
-        if (this.masterEQ) {
-          this.masterEQ.low.value = 1.5;
-          this.masterEQ.mid.value = 0.0;
-        }
-        break;
-      case 'bright': // Crisp Studio
-        this.setMasterWarmth(15500);
-        this.setMasterTreble(-1.5);
-        this.setMasterReverbWet(0.18);
-        this.setMasterVolume(-3.5);
-        if (this.masterEQ) {
-          this.masterEQ.low.value = 1.8;
-          this.masterEQ.mid.value = -0.8;
-        }
-        break;
-    }
+    // Artificial tone enhancement presets removed per user instruction
   }
 
   getMixerSettings() {
     return {
-      volume: this.masterVolume ? this.masterVolume.volume.value : -2.5,
-      warmth: this.masterWarmthFilter ? this.masterWarmthFilter.frequency.value : 11500,
-      treble: this.masterEQ ? this.masterEQ.high.value : -4.0,
-      reverbWet: this.masterReverb ? this.masterReverb.wet.value : 0.15
+      volume: this.masterVolume ? this.masterVolume.volume.value : -2.0,
+      warmth: 14000,
+      treble: 0,
+      reverbWet: 0
     };
   }
 }
