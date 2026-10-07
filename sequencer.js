@@ -238,11 +238,13 @@ export class HyruleSequencer {
 
     this.phraseIndex = 0;
     this.repeatEventId = null;
+    this.boundaryEventId = null;
 
     // Active playing block and pre-buffered upcoming block
     this.currentBlock = null;
     this.upcomingBlock = null;
     this.currentBlockStartTransportSec = 0;
+    this.upcomingBlockStartSec = 0;
     this.currentBlockDurationSec = BLOCK_DURATION_SEC;
 
     // Map of scheduled event IDs per phrase index for clean cancellation on mode changes
@@ -861,6 +863,46 @@ export class HyruleSequencer {
     return this.explorationBag.next();
   }
 
+  /**
+   * Converts MIDI tick position to exact real-world audio seconds,
+   * accounting for all tempo changes, ritardandos, accelerandos, and pauses in the MIDI header.
+   */
+  ticksToTime(ticks) {
+    if (!this.midiData || !this.midiData.header || !this.midiData.header.tempos) {
+      return (ticks / (this.PPQ * 150 / 60));
+    }
+    const tempos = this.midiData.header.tempos;
+    const ppq = this.PPQ;
+    let time = 0;
+    let lastTick = 0;
+    let currentBpm = 120;
+    for (let i = 0; i < tempos.length; i++) {
+      const t = tempos[i];
+      if (t.ticks > ticks) break;
+      const dt = t.ticks - lastTick;
+      time += (dt / (ppq * currentBpm / 60));
+      lastTick = t.ticks;
+      currentBpm = t.bpm;
+    }
+    const dt = ticks - lastTick;
+    time += (dt / (ppq * currentBpm / 60));
+    return time;
+  }
+
+  /**
+   * Returns exact start time, end time, and duration in seconds for any 8-bar block.
+   */
+  getBlockMetrics(block) {
+    if (!block) return { startTicks: 0, endTicks: 30720, startTimeSec: 0, endTimeSec: 12.8, durationSec: 12.8 };
+    const ticksPerBar = 4 * this.PPQ;
+    const startTicks = block.startBar * ticksPerBar;
+    const endTicks = block.endBar * ticksPerBar;
+    const startTimeSec = this.ticksToTime(startTicks);
+    const endTimeSec = this.ticksToTime(endTicks);
+    const durationSec = Math.max(0.1, endTimeSec - startTimeSec);
+    return { startTicks, endTicks, startTimeSec, endTimeSec, durationSec };
+  }
+
   clearPhraseEvents(phraseIdx) {
     if (this.phraseEventIds[phraseIdx]) {
       const transport = Tone.getTransport();
@@ -874,50 +916,63 @@ export class HyruleSequencer {
   }
 
   /**
-   * Schedule all MIDI notes in an 8-measure block onto Tone.Transport timeline
+   * Schedule all MIDI notes in an 8-measure block onto Tone.Transport timeline.
+   * Strictly follows all microsecond tempo adjustments, note durations, and pauses
+   * computed from the provided hyrule_field_midi.json.
    */
   scheduleNotesForBlock(chosenBlock, phraseIdx, startTransportSec) {
     if (!chosenBlock || !this.midiData || !this.midiData.tracks) return;
 
     const ticksPerBar = 4 * this.PPQ;
-    const startTicks = chosenBlock.startBar * ticksPerBar;
-    const endTicks = chosenBlock.endBar * ticksPerBar;
-    const totalBlockTicks = endTicks - startTicks; // Exactly 8 bars in ticks (30720 ticks)
-    const blockDurationSec = this.BLOCK_DURATION_SEC; // 12.8s
-
+    const { startTicks, endTicks, startTimeSec, durationSec } = this.getBlockMetrics(chosenBlock);
     const eventIds = [];
     const transport = Tone.getTransport();
 
     this.midiData.tracks.forEach((track, trIdx) => {
       const trackCategory = this.getTrackCategory(track, trIdx);
       const sampler = this.getSamplerForTrack(trIdx);
+      const isOcarina = (trIdx === 25 || this.getInstrumentKeyForTrack(trIdx) === 'ocarina');
 
       const notesInBlock = track.notes.filter(note =>
         note.ticks >= startTicks && note.ticks < endTicks
       );
 
       notesInBlock.forEach((note) => {
-        const noteFraction = (note.ticks - startTicks) / totalBlockTicks;
-        const relativeSec = noteFraction * blockDurationSec;
-
+        // Exact real-world time in seconds relative to the block start,
+        // strictly following all tempo adjustments, rubato, and pauses from hyrule_field_midi.json
+        const relativeSec = Math.max(0, note.time - startTimeSec);
         const noteTransportTime = startTransportSec + relativeSec;
 
-        let noteDurationSec = (note.durationTicks / totalBlockTicks) * blockDurationSec;
-        if (isNaN(noteDurationSec) || noteDurationSec <= 0) {
-          noteDurationSec = note.duration || 0.2;
+        let noteDurationSec = (typeof note.duration === 'number' && note.duration > 0)
+          ? note.duration
+          : 0.2;
+
+        // Authentic pitch transposition for Ocarina:
+        // In the raw MIDI, Ocarina (Track 25) is transcribed 2 octaves too high (A6..G7 / MIDI 83..105).
+        // Transposing down 24 semitones (-2 octaves) restores Link's rich alto/tenor ocarina register (A4..D5 / MIDI 59..81),
+        // matching the 00_ALL.sf2 Ocarina sample root pitch (Ab4 / MIDI 68) and eliminating harsh/shrill screeching.
+        let playMidi = note.midi;
+        let playName = note.name;
+        if (isOcarina && note.midi >= 80) {
+          playMidi = note.midi - 24;
+          playName = midiToNoteName(playMidi);
         }
+
+        const noteToPlay = (playMidi !== note.midi)
+          ? { ...note, midi: playMidi, name: playName }
+          : note;
 
         // Precise lookahead scheduling on Tone.Transport
         const eventId = transport.scheduleOnce((time) => {
-          this.triggerSafeNote(sampler, note, noteDurationSec, time);
+          this.triggerSafeNote(sampler, noteToPlay, noteDurationSec, time);
         }, noteTransportTime);
 
         eventIds.push(eventId);
 
         // Add note to visualizer stream
         this.streamNotes.push({
-          name: note.name,
-          midi: note.midi,
+          name: playName,
+          midi: playMidi,
           velocity: note.velocity,
           transportTime: noteTransportTime,
           duration: Math.max(0.08, noteDurationSec),
@@ -940,12 +995,13 @@ export class HyruleSequencer {
         const dayStartTicks = 17 * ticksPerBar;
         const dayEndTicks = 25 * ticksPerBar;
         const dayPercNotes = gallopTrack.notes.filter(n => n.ticks >= dayStartTicks && n.ticks < dayEndTicks);
+        const totalBlockTicks = 8 * ticksPerBar;
 
         dayPercNotes.forEach(note => {
           const noteFraction = (note.ticks - dayStartTicks) / totalBlockTicks;
-          const relativeSec = noteFraction * blockDurationSec;
+          const relativeSec = noteFraction * durationSec;
           const noteTransportTime = startTransportSec + relativeSec;
-          const noteDurationSec = (note.durationTicks / totalBlockTicks) * blockDurationSec;
+          const noteDurationSec = (note.durationTicks / totalBlockTicks) * durationSec;
 
           const eventId = transport.scheduleOnce((time) => {
             this.triggerSafeNote('percussion', note, noteDurationSec, time);
@@ -976,7 +1032,7 @@ export class HyruleSequencer {
    */
   requeueUpcomingPhrase(forcedTargetState = null) {
     const upcomingPhraseIdx = this.phraseIndex + 1;
-    const upcomingStartTransportSec = upcomingPhraseIdx * this.BLOCK_DURATION_SEC;
+    const upcomingStartTransportSec = this.upcomingBlockStartSec;
 
     // 1. Cancel previous upcoming phrase events
     this.clearPhraseEvents(upcomingPhraseIdx);
@@ -994,7 +1050,8 @@ export class HyruleSequencer {
   }
 
   /**
-   * Master 8-bar phrase downbeat clock
+   * Master 8-bar phrase downbeat clock: dynamically fires at the exact completion
+   * time of the active block, accounting for variable tempo blocks (e.g. Morning 16.8s, Quiet 13.7s-14.2s, Day 12.8s)
    */
   onPhraseBoundary(timelineTime) {
     const audioTime = timelineTime || Tone.now();
@@ -1005,11 +1062,13 @@ export class HyruleSequencer {
     // 2. The pre-queued upcoming block now becomes the active block
     this.phraseIndex++;
     this.currentBlock = this.upcomingBlock;
-    const startTransportSec = this.phraseIndex * this.BLOCK_DURATION_SEC;
+    const currentMetrics = this.getBlockMetrics(this.currentBlock);
+    const startTransportSec = this.upcomingBlockStartSec;
+
     this.currentBlockStartTransportSec = startTransportSec;
-    this.currentBlockDurationSec = this.BLOCK_DURATION_SEC;
+    this.currentBlockDurationSec = currentMetrics.durationSec;
     currentBlockStartTransportSec = startTransportSec;
-    currentBlockDurationSec = this.BLOCK_DURATION_SEC;
+    currentBlockDurationSec = currentMetrics.durationSec;
 
     // Immediately advance state so lookahead pre-queuing selects the next sequence
     // rather than repeating BATTLE_INTRO or BATTLE_OUTRO twice back-to-back
@@ -1021,10 +1080,18 @@ export class HyruleSequencer {
 
     // 3. Pre-queue the NEXT upcoming block ahead of time (1 block lookahead)
     const nextPhraseIdx = this.phraseIndex + 1;
-    const nextStartTransportSec = nextPhraseIdx * this.BLOCK_DURATION_SEC;
+    const nextStartTransportSec = startTransportSec + currentMetrics.durationSec;
+    this.upcomingBlockStartSec = nextStartTransportSec;
+
     const nextBlock = this.selectBlockForState(this.currentState);
     this.upcomingBlock = nextBlock;
     this.scheduleNotesForBlock(nextBlock, nextPhraseIdx, nextStartTransportSec);
+
+    // Dynamic phrase boundary clock on Tone.Transport: fires at exact conclusion of this block
+    const transport = Tone.getTransport();
+    this.boundaryEventId = transport.scheduleOnce((time) => {
+      this.onPhraseBoundary(time);
+    }, nextStartTransportSec);
 
     // 4. Clean up Transport events from older phrases to prevent unbounded timeline memory growth
     Object.keys(this.phraseEventIds).forEach(key => {
@@ -1035,7 +1102,7 @@ export class HyruleSequencer {
     });
 
     // 5. Clean up old visualizer notes (more than 2.5s in the past)
-    const currentTransportSec = Tone.getTransport().seconds;
+    const currentTransportSec = transport.seconds;
     this.streamNotes = this.streamNotes.filter(n => (n.transportTime + n.duration) >= (currentTransportSec - 2.5));
   }
 
@@ -1056,26 +1123,29 @@ export class HyruleSequencer {
       this.quietBag.reset();
 
       // Startup Sequence:
-      // Phrase 0 (0.0s - 12.8s): Morning Sunrise cue (Bars 1–9)
+      // Phrase 0: Morning Sunrise cue (Bars 1–9) with full rubato (16.867s)
       const block0 = blockMap.MORNING;
+      const metrics0 = this.getBlockMetrics(block0);
       this.currentBlock = block0;
       this.currentBlockStartTransportSec = 0;
-      this.currentBlockDurationSec = this.BLOCK_DURATION_SEC;
+      this.currentBlockDurationSec = metrics0.durationSec;
       currentBlockStartTransportSec = 0;
-      currentBlockDurationSec = this.BLOCK_DURATION_SEC;
+      currentBlockDurationSec = metrics0.durationSec;
       this.scheduleNotesForBlock(block0, 0, 0);
 
-      // Phrase 1 (12.8s - 25.6s): Heroic Intro Fanfare (Bars 9–17)
+      // Phrase 1: Heroic Intro Fanfare (Bars 9–17)
       const block1 = blockMap.INTRO;
+      const metrics1 = this.getBlockMetrics(block1);
       this.upcomingBlock = block1;
-      this.scheduleNotesForBlock(block1, 1, this.BLOCK_DURATION_SEC);
+      this.upcomingBlockStartSec = metrics0.durationSec;
+      this.scheduleNotesForBlock(block1, 1, metrics0.durationSec);
 
       this.initialSequenceStage = 2; // Next will be Day 1
 
-      // Master 8-bar loop recurring clock: fires on every 8-measure boundary
-      this.repeatEventId = transport.scheduleRepeat((time) => {
+      // Dynamic phrase boundary clock: fires at exact conclusion of Morning
+      this.boundaryEventId = transport.scheduleOnce((time) => {
         this.onPhraseBoundary(time);
-      }, `${this.BARS_PER_BLOCK}m`, `${this.BARS_PER_BLOCK}m`);
+      }, metrics0.durationSec);
 
       transport.start();
     }
@@ -1085,6 +1155,10 @@ export class HyruleSequencer {
     const transport = Tone.getTransport();
     transport.stop();
     transport.cancel(0);
+    if (this.boundaryEventId !== null) {
+      try { transport.clear(this.boundaryEventId); } catch (e) {}
+      this.boundaryEventId = null;
+    }
     this.repeatEventId = null;
     this.phraseIndex = 0;
     this.postBattleState = null;
@@ -1210,7 +1284,7 @@ export function getActiveCueInfo() {
   const pendingMode = sequencer.pendingStateChange;
   const transportSec = Tone.getTransport() ? Tone.getTransport().seconds : 0;
   const blockStartSec = sequencer.currentBlockStartTransportSec;
-  const blockDurSec = sequencer.BLOCK_DURATION_SEC;
+  const blockDurSec = sequencer.currentBlockDurationSec || sequencer.BLOCK_DURATION_SEC;
 
   return {
     cueId: currentBlock ? currentBlock.id : 'Sunrise (Bars 1–9)',

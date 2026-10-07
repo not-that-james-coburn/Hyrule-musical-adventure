@@ -601,7 +601,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (cueMeasureCounterEl) {
       let counterText = "Ready";
       if (isPlaying) {
-        const barInBlock = Math.min(8, Math.floor(cueInfo.timeInBlock / 1.6) + 1);
+        const barSec = (cueInfo.blockDurSec && cueInfo.blockDurSec > 0) ? (cueInfo.blockDurSec / 8) : 1.6;
+        const barInBlock = Math.min(8, Math.floor(cueInfo.timeInBlock / barSec) + 1);
         counterText = `Bar ${barInBlock}/8`;
       }
       if (counterText !== lastCounterText) {
