@@ -297,19 +297,19 @@ export class HyruleSequencer {
 
       // Analog reconstruction low-pass filter (emulating authentic N64 DAC filter)
       this.masterWarmthFilter = new Tone.Filter({
-        frequency: 11500,
+        frequency: 14000,
         type: 'lowpass',
         rolloff: -12,
         Q: 0.7
       }).connect(this.masterReverb);
 
-      // 3-Band Equalizer: tames harsh high frequencies, scoops boxy mids, adds warm orchestral body
+      // 3-Band Equalizer: authentic N64 orchestral balance with natural high clarity
       this.masterEQ = new Tone.EQ3({
-        low: 2.2,
-        mid: -1.2,
-        high: -4.0,
-        lowFrequency: 320,
-        highFrequency: 3500
+        low: 1.5,
+        mid: 0.0,
+        high: -1.5,
+        lowFrequency: 300,
+        highFrequency: 4200
       }).connect(this.masterWarmthFilter);
 
       // Master Pre-Bus summing stem gains
@@ -416,32 +416,34 @@ export class HyruleSequencer {
   }
 
   createSoundfontRack() {
-    // Calibrated instrument balance: resolves harshness, shrill ocarina/brass, and balances orchestral dynamics
+    // Calibrated instrument balance for authentic N64 Zelda SoundFont (00_ALL.sf2)
     const sampleSpecs = {
-      piano: { filter: k => k.startsWith('Grand Piano'), defaultVol: -7.0 },
-      trombone: { filter: k => k.startsWith('Trombone'), defaultVol: -7.0 },
-      trumpet: { filter: k => k.startsWith('Trumpet'), defaultVol: -8.5 },
-      brassSection: { filter: k => k.startsWith('Brass Section'), defaultVol: -7.5 },
-      stringEnsemble: { filter: k => k.startsWith('StrLoop'), defaultVol: -7.0 },
-      stringEnsemble2: { filter: k => k.startsWith('StrLoop'), defaultVol: -7.0 },
-      cello: { filter: k => k.startsWith('Cello'), defaultVol: -5.5 },
-      doubleBass: { filter: k => k.startsWith('Double Bass'), defaultVol: -4.5 },
-      pickBass: { filter: k => k.startsWith('Pick Bass'), defaultVol: -4.0 },
-      flute: { filter: k => k.startsWith('Flute'), defaultVol: -8.0 },
-      tenorSax: { filter: k => k.startsWith('Tenor Sax'), defaultVol: -7.5 },
-      ocarina: { filter: k => k.startsWith('Ocarina'), defaultVol: -9.5 }, // Tames piercing high register
-      harp: { filter: k => k.startsWith('Orchestral Harp'), defaultVol: -6.5 },
-      accordion: { filter: k => k.startsWith('Accordion'), defaultVol: -8.0 },
-      marimba: { filter: k => k.startsWith('Marimba'), defaultVol: -6.5 },
-      vibraphone: { filter: k => k.startsWith('Vibraphone'), defaultVol: -7.0 },
-      timpani: { filter: k => k.startsWith('Timpani'), defaultVol: -4.5 },
-      snare: { filter: k => k.startsWith('Standard Snare 3') || k.startsWith('Jazz Snare'), defaultVol: -5.5 },
-      tom: { filter: k => k.startsWith('Standard Tom 5'), defaultVol: -5.5 }
+      piano: { filter: k => k.startsWith('Piano'), defaultVol: -5.5 },
+      trombone: { filter: k => k.startsWith('Trombone'), defaultVol: -4.5 },
+      trumpet: { filter: k => k.startsWith('Trumpet'), defaultVol: -5.0 },
+      brassSection: { filter: k => k.startsWith('Horn') || k.startsWith('Trumpet') || k.startsWith('Trombone'), defaultVol: -4.5 },
+      stringEnsemble: { filter: k => k.startsWith('Strings'), defaultVol: -4.0 },
+      stringEnsemble2: { filter: k => k.startsWith('Strings'), defaultVol: -4.0 },
+      cello: { filter: k => k.startsWith('Strings Low') || k.startsWith('Pizzicato Low'), defaultVol: -4.0 },
+      doubleBass: { filter: k => k.startsWith('Strings Low') || k.startsWith('Pizzicato Low') || k.startsWith('Tuba'), defaultVol: -3.0 },
+      pickBass: { filter: k => k.startsWith('Pizzicato Low') || k.startsWith('Strings Low') || k.startsWith('Bassoon'), defaultVol: -3.0 },
+      flute: { filter: k => k.startsWith('Flute'), defaultVol: -5.0 },
+      tenorSax: { filter: k => k.startsWith('Clarinet') || k.startsWith('Oboe') || k.startsWith('Bassoon'), defaultVol: -5.0 },
+      ocarina: { filter: k => k.startsWith('Ocarina'), defaultVol: -5.0 },
+      harp: { filter: k => k.startsWith('Harp High') || k.startsWith('Harp Low'), defaultVol: -4.0 },
+      accordion: { filter: k => k.startsWith('Accordion'), defaultVol: -5.0 },
+      marimba: { filter: k => k.startsWith('Marimba'), defaultVol: -4.5 },
+      vibraphone: { filter: k => k.startsWith('Glockenspiel') || k === 'Bell', defaultVol: -5.0 },
+      timpani: { filter: k => k.startsWith('Timpani'), defaultVol: -3.5 },
+      snare: { filter: k => k.startsWith('Snare'), defaultVol: -4.0 },
+      hihat: { filter: k => k === 'Cymbal Hit', defaultVol: -6.5 },
+      kick: { filter: k => k === 'Kick Drum' || k === 'Ethnic Kick', defaultVol: -3.0 },
+      tom: { filter: k => k.startsWith('Bent Drum') || k.startsWith('Ethnic Drum Kit') || k.startsWith('Timpani Low'), defaultVol: -4.0 }
     };
 
     // Sub-bus filters to tame metallic brass bite and upper-octave woodwind harshness
     this.brassFilter = new Tone.Filter({
-      frequency: 6800,
+      frequency: 10500,
       type: 'lowpass',
       rolloff: -12
     });
@@ -449,7 +451,7 @@ export class HyruleSequencer {
     this.brassFilter.connect(this.gains.battleMusic);
 
     this.woodwindFilter = new Tone.Filter({
-      frequency: 7600,
+      frequency: 12000,
       type: 'lowpass',
       rolloff: -12
     });
@@ -470,7 +472,7 @@ export class HyruleSequencer {
         } else if (instKey === 'ocarina' || instKey === 'flute' || instKey === 'tenorSax') {
           // Route lead woodwinds through smooth roll-off filter
           sampler.connect(this.woodwindFilter);
-        } else if (instKey === 'snare' || instKey === 'tom') {
+        } else if (instKey === 'snare' || instKey === 'tom' || instKey === 'hihat' || instKey === 'kick') {
           sampler.connect(this.gains.explorePercussion);
           sampler.connect(this.gains.battleMusic);
         } else if (instKey === 'harp') {
@@ -612,23 +614,33 @@ export class HyruleSequencer {
     if (sampler === 'percussion') {
       const midiPitch = note.midi;
       if (midiPitch === 35 || midiPitch === 36) {
-        // Kick Drum
+        // Authentic N64 Kick Drum (with synth fallback)
         try {
-          this.soundRack.kickSynth.triggerAttackRelease('C1', dur, safeTime, vel);
+          const kickSampler = this.soundRack.samplers.kick;
+          if (kickSampler && kickSampler.loaded) {
+            kickSampler.triggerAttackRelease('C2', dur, safeTime, vel);
+          } else {
+            this.soundRack.kickSynth.triggerAttackRelease('C1', dur, safeTime, vel);
+          }
         } catch (e) {}
       } else if (midiPitch === 38 || midiPitch === 40) {
-        // Snare
+        // Authentic N64 Snare (Snare High / Snare Low)
         const snareSampler = this.soundRack.samplers.snare;
         if (snareSampler && snareSampler.loaded) {
-          try { snareSampler.triggerAttackRelease('C4', dur, safeTime, vel); } catch (e) {}
+          try { snareSampler.triggerAttackRelease(midiPitch === 38 ? 'B3' : 'C4', dur, safeTime, vel); } catch (e) {}
         }
       } else if (midiPitch === 42 || midiPitch === 44 || midiPitch === 46) {
-        // Hi-Hat
+        // Authentic N64 Hi-Hat / Cymbal (with synth fallback)
         try {
-          this.soundRack.hihatSynth.triggerAttackRelease(dur, safeTime, vel * 0.7);
+          const hihatSampler = this.soundRack.samplers.hihat;
+          if (hihatSampler && hihatSampler.loaded) {
+            hihatSampler.triggerAttackRelease('C4', dur, safeTime, vel * 0.7);
+          } else {
+            this.soundRack.hihatSynth.triggerAttackRelease(dur, safeTime, vel * 0.7);
+          }
         } catch (e) {}
       } else if (midiPitch >= 41 && midiPitch <= 50) {
-        // Toms / Timpani
+        // Authentic N64 Toms / Timpani
         const tomSampler = this.soundRack.samplers.tom;
         if (tomSampler && tomSampler.loaded) {
           try { tomSampler.triggerAttackRelease('C4', dur, safeTime, vel); } catch (e) {}
