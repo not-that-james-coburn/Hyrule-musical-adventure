@@ -291,10 +291,13 @@ export class HyruleSequencer {
         knee: 6
       }).connect(this.masterVolume);
 
+      // 1. Unified Global Spatial Convolution Reverb Matrix
+      // 1.8s room decay scale with 15% wet/dry mix masks sterile digital samples
+      // and produces the expansive, echoing Hyrule Field acoustic chamber
       this.masterReverb = new Tone.Reverb({
-        decay: 2.4,
-        preDelay: 0.02,
-        wet: 0.22
+        decay: 1.8,
+        preDelay: 0.015,
+        wet: 0.15
       }).connect(this.masterCompressor);
 
       // Analog reconstruction low-pass filter (emulating authentic N64 DAC filter)
@@ -332,7 +335,7 @@ export class HyruleSequencer {
       // Wait for soundfont samples to buffer with timeout protection
       try {
         await Promise.race([
-          Promise.all([Tone.loaded(), this.masterReverb ? this.masterReverb.ready : Promise.resolve()]),
+          Promise.all([Tone.loaded(), this.masterReverb ? (this.masterReverb.ready || this.masterReverb.generate()) : Promise.resolve()]),
           new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Sample loading timed out after 20s')), 20000)
           )
@@ -461,29 +464,39 @@ export class HyruleSequencer {
     this.woodwindFilter.connect(this.gains.battleMusic);
 
     const samplers = {};
+    this.instGains = {};
+
+    for (const instKey of Object.keys(sampleSpecs)) {
+      this.instGains[instKey] = new Tone.Gain(1.0);
+    }
+    this.instGains.percussion = new Tone.Gain(1.0);
+
     for (const [instKey, spec] of Object.entries(sampleSpecs)) {
       const urls = this.buildSamplerUrls(spec.filter);
       if (Object.keys(urls).length > 0) {
         const sampler = new Tone.Sampler({ urls, baseUrl: this.soundfontBaseUrl });
         sampler.volume.value = spec.defaultVol;
 
+        // Route sampler into its dedicated instrument gain node
+        sampler.connect(this.instGains[instKey]);
+
         // Routing matrix through tone-shaping filters and dynamic stems:
         if (instKey === 'trumpet' || instKey === 'trombone' || instKey === 'brassSection') {
           // Route brass through dedicated anti-glare warmth filter
-          sampler.connect(this.brassFilter);
+          this.instGains[instKey].connect(this.brassFilter);
         } else if (instKey === 'ocarina' || instKey === 'flute' || instKey === 'tenorSax') {
           // Route lead woodwinds through smooth roll-off filter
-          sampler.connect(this.woodwindFilter);
+          this.instGains[instKey].connect(this.woodwindFilter);
         } else if (instKey === 'snare' || instKey === 'tom' || instKey === 'hihat' || instKey === 'kick') {
-          sampler.connect(this.gains.explorePercussion);
-          sampler.connect(this.gains.battleMusic);
+          this.instGains[instKey].connect(this.gains.explorePercussion);
+          this.instGains[instKey].connect(this.gains.battleMusic);
         } else if (instKey === 'harp') {
-          sampler.connect(this.gains.idleHarp);
-          sampler.connect(this.gains.exploreCore);
-          sampler.connect(this.gains.battleMusic);
+          this.instGains[instKey].connect(this.gains.idleHarp);
+          this.instGains[instKey].connect(this.gains.exploreCore);
+          this.instGains[instKey].connect(this.gains.battleMusic);
         } else {
-          sampler.connect(this.gains.exploreCore);
-          sampler.connect(this.gains.battleMusic);
+          this.instGains[instKey].connect(this.gains.exploreCore);
+          this.instGains[instKey].connect(this.gains.battleMusic);
         }
         samplers[instKey] = sampler;
       }
@@ -497,8 +510,7 @@ export class HyruleSequencer {
       envelope: { attack: 0.001, decay: 0.22, sustain: 0, release: 0.12 }
     });
     kickSynth.volume.value = -7.0;
-    kickSynth.connect(this.gains.explorePercussion);
-    kickSynth.connect(this.gains.battleMusic);
+    kickSynth.connect(this.instGains.kick);
 
     const hihatSynth = new Tone.MetalSynth({
       frequency: 180,
@@ -509,8 +521,7 @@ export class HyruleSequencer {
       octaves: 1.2
     });
     hihatSynth.volume.value = -26;
-    hihatSynth.connect(this.gains.explorePercussion);
-    hihatSynth.connect(this.gains.battleMusic);
+    hihatSynth.connect(this.instGains.hihat);
 
     function releaseAll() {
       Object.values(samplers).forEach(s => {
@@ -530,6 +541,7 @@ export class HyruleSequencer {
       samplers,
       kickSynth,
       hihatSynth,
+      instGains: this.instGains,
       releaseAll
     };
   }
@@ -917,17 +929,70 @@ export class HyruleSequencer {
 
   /**
    * Schedule all MIDI notes in an 8-measure block onto Tone.Transport timeline.
-   * Strictly follows all microsecond tempo adjustments, note durations, and pauses
-   * computed from the provided hyrule_field_midi.json.
+   * Injects MIDI JSON CC#7 (Volume) and CC#11 (Expression) automation curves to eliminate track imbalance
+   * (preventing strings from overpowering ocarina lead), and synchronizes note events exactly with 8-bar measures.
    */
   scheduleNotesForBlock(chosenBlock, phraseIdx, startTransportSec) {
     if (!chosenBlock || !this.midiData || !this.midiData.tracks) return;
 
     const ticksPerBar = 4 * this.PPQ;
-    const { startTicks, endTicks, startTimeSec, durationSec } = this.getBlockMetrics(chosenBlock);
+    const startTicks = chosenBlock.startBar * ticksPerBar;
+    const endTicks = chosenBlock.endBar * ticksPerBar;
+    const totalBlockTicks = endTicks - startTicks; // Exactly 8 bars in ticks (30720 ticks)
+    const blockDurationSec = this.BLOCK_DURATION_SEC; // Exact 12.8s for 8 bars at 150 BPM
+
     const eventIds = [];
     const transport = Tone.getTransport();
 
+    // -------------------------------------------------------------------------
+    // 1. Parse & Inject MIDI JSON CC#7 (Volume) & CC#11 (Expression) Automation Curves
+    // Roland SC-88 / N64 expression parser: captures sweeping curves and sets gain
+    // -------------------------------------------------------------------------
+    const processedInstGains = new Set();
+
+    this.midiData.tracks.forEach((track, trIdx) => {
+      const instKey = this.getInstrumentKeyForTrack(trIdx);
+      const gainNode = this.instGains ? this.instGains[instKey] : null;
+      if (!gainNode) return;
+
+      // Extract CC#7 base volume (normalized 0.0 to 1.0)
+      let baseCc7 = 1.0;
+      if (track.controlChanges && track.controlChanges['7'] && track.controlChanges['7'].length > 0) {
+        const raw7 = track.controlChanges['7'][0].value;
+        baseCc7 = (raw7 > 1) ? (raw7 / 127) : raw7;
+      }
+
+      // Filter CC#11 Expression events occurring within this 8-bar block
+      const blockCc11 = (track.controlChanges && track.controlChanges['11'])
+        ? track.controlChanges['11'].filter(e => e.ticks >= startTicks && e.ticks < endTicks)
+        : [];
+
+      if (blockCc11.length > 0) {
+        processedInstGains.add(instKey);
+        blockCc11.forEach(ccEvent => {
+          const noteFraction = (ccEvent.ticks - startTicks) / totalBlockTicks;
+          const ccTransportTime = startTransportSec + (noteFraction * blockDurationSec);
+          const raw11 = ccEvent.value;
+          const exprVal = (raw11 > 1) ? (raw11 / 127) : raw11;
+          const targetGain = baseCc7 * exprVal;
+
+          const evId = transport.scheduleOnce((time) => {
+            gainNode.gain.setValueAtTime(targetGain, time);
+          }, ccTransportTime);
+          eventIds.push(evId);
+        });
+      } else if (!processedInstGains.has(instKey)) {
+        // Reset gain to baseline CC#7 volume at block boundary
+        const evId = transport.scheduleOnce((time) => {
+          gainNode.gain.setValueAtTime(baseCc7, time);
+        }, startTransportSec);
+        eventIds.push(evId);
+      }
+    });
+
+    // -------------------------------------------------------------------------
+    // 2. Schedule Note Events within the 8-measure block
+    // -------------------------------------------------------------------------
     this.midiData.tracks.forEach((track, trIdx) => {
       const trackCategory = this.getTrackCategory(track, trIdx);
       const sampler = this.getSamplerForTrack(trIdx);
@@ -938,14 +1003,14 @@ export class HyruleSequencer {
       );
 
       notesInBlock.forEach((note) => {
-        // Exact real-world time in seconds relative to the block start,
-        // strictly following all tempo adjustments, rubato, and pauses from hyrule_field_midi.json
-        const relativeSec = Math.max(0, note.time - startTimeSec);
+        const noteFraction = (note.ticks - startTicks) / totalBlockTicks;
+        const relativeSec = noteFraction * blockDurationSec;
         const noteTransportTime = startTransportSec + relativeSec;
 
-        let noteDurationSec = (typeof note.duration === 'number' && note.duration > 0)
-          ? note.duration
-          : 0.2;
+        let noteDurationSec = (note.durationTicks / totalBlockTicks) * blockDurationSec;
+        if (isNaN(noteDurationSec) || noteDurationSec <= 0) {
+          noteDurationSec = note.duration || 0.2;
+        }
 
         // Authentic pitch transposition for Ocarina:
         // In the raw MIDI, Ocarina (Track 25) is transcribed 2 octaves too high (A6..G7 / MIDI 83..105).
@@ -984,24 +1049,21 @@ export class HyruleSequencer {
       });
     });
 
-    // If the block is a Quiet/Rest cue with no native drums in the MIDI,
-    // schedule the master 8-bar galloping snare loop on the explorePercussion layer.
-    // In Rest mode, explorePercussion gain is 0 (silent).
-    // The moment the player activates Adventure mode, explorePercussion un-mutes
-    // and the drums resume immediately in perfect tempo without waiting for the next cue!
+    // -------------------------------------------------------------------------
+    // 3. Galloping Snare Drum Loop for Quiet/Rest Cues
+    // -------------------------------------------------------------------------
     if (chosenBlock.mode === 'QUIET') {
       const gallopTrack = this.midiData.tracks.find(t => t.channel === 9 && t.notes && t.notes.length > 500);
       if (gallopTrack) {
         const dayStartTicks = 17 * ticksPerBar;
         const dayEndTicks = 25 * ticksPerBar;
         const dayPercNotes = gallopTrack.notes.filter(n => n.ticks >= dayStartTicks && n.ticks < dayEndTicks);
-        const totalBlockTicks = 8 * ticksPerBar;
 
         dayPercNotes.forEach(note => {
           const noteFraction = (note.ticks - dayStartTicks) / totalBlockTicks;
-          const relativeSec = noteFraction * durationSec;
+          const relativeSec = noteFraction * blockDurationSec;
           const noteTransportTime = startTransportSec + relativeSec;
-          const noteDurationSec = (note.durationTicks / totalBlockTicks) * durationSec;
+          const noteDurationSec = (note.durationTicks / totalBlockTicks) * blockDurationSec;
 
           const eventId = transport.scheduleOnce((time) => {
             this.triggerSafeNote('percussion', note, noteDurationSec, time);
@@ -1032,7 +1094,7 @@ export class HyruleSequencer {
    */
   requeueUpcomingPhrase(forcedTargetState = null) {
     const upcomingPhraseIdx = this.phraseIndex + 1;
-    const upcomingStartTransportSec = this.upcomingBlockStartSec;
+    const upcomingStartTransportSec = upcomingPhraseIdx * this.BLOCK_DURATION_SEC;
 
     // 1. Cancel previous upcoming phrase events
     this.clearPhraseEvents(upcomingPhraseIdx);
@@ -1050,8 +1112,7 @@ export class HyruleSequencer {
   }
 
   /**
-   * Master 8-bar phrase downbeat clock: dynamically fires at the exact completion
-   * time of the active block, accounting for variable tempo blocks (e.g. Morning 16.8s, Quiet 13.7s-14.2s, Day 12.8s)
+   * Master 8-bar phrase downbeat clock: fires precisely at every 8-measure boundary (12.8s)
    */
   onPhraseBoundary(timelineTime) {
     const audioTime = timelineTime || Tone.now();
@@ -1062,16 +1123,14 @@ export class HyruleSequencer {
     // 2. The pre-queued upcoming block now becomes the active block
     this.phraseIndex++;
     this.currentBlock = this.upcomingBlock;
-    const currentMetrics = this.getBlockMetrics(this.currentBlock);
-    const startTransportSec = this.upcomingBlockStartSec;
+    const startTransportSec = this.phraseIndex * this.BLOCK_DURATION_SEC;
 
     this.currentBlockStartTransportSec = startTransportSec;
-    this.currentBlockDurationSec = currentMetrics.durationSec;
+    this.currentBlockDurationSec = this.BLOCK_DURATION_SEC;
     currentBlockStartTransportSec = startTransportSec;
-    currentBlockDurationSec = currentMetrics.durationSec;
+    currentBlockDurationSec = this.BLOCK_DURATION_SEC;
 
     // Immediately advance state so lookahead pre-queuing selects the next sequence
-    // rather than repeating BATTLE_INTRO or BATTLE_OUTRO twice back-to-back
     if (this.currentBlock === blockMap.BATTLE_INTRO) {
       this.currentState = 'BATTLE';
     } else if (this.currentBlock === blockMap.BATTLE_OUTRO) {
@@ -1080,14 +1139,13 @@ export class HyruleSequencer {
 
     // 3. Pre-queue the NEXT upcoming block ahead of time (1 block lookahead)
     const nextPhraseIdx = this.phraseIndex + 1;
-    const nextStartTransportSec = startTransportSec + currentMetrics.durationSec;
-    this.upcomingBlockStartSec = nextStartTransportSec;
+    const nextStartTransportSec = nextPhraseIdx * this.BLOCK_DURATION_SEC;
 
     const nextBlock = this.selectBlockForState(this.currentState);
     this.upcomingBlock = nextBlock;
     this.scheduleNotesForBlock(nextBlock, nextPhraseIdx, nextStartTransportSec);
 
-    // Dynamic phrase boundary clock on Tone.Transport: fires at exact conclusion of this block
+    // Schedule next phrase boundary event on Tone.Transport
     const transport = Tone.getTransport();
     this.boundaryEventId = transport.scheduleOnce((time) => {
       this.onPhraseBoundary(time);
@@ -1123,29 +1181,26 @@ export class HyruleSequencer {
       this.quietBag.reset();
 
       // Startup Sequence:
-      // Phrase 0: Morning Sunrise cue (Bars 1–9) with full rubato (16.867s)
+      // Phrase 0: Morning Sunrise cue (Bars 1–9, 12.8s)
       const block0 = blockMap.MORNING;
-      const metrics0 = this.getBlockMetrics(block0);
       this.currentBlock = block0;
       this.currentBlockStartTransportSec = 0;
-      this.currentBlockDurationSec = metrics0.durationSec;
+      this.currentBlockDurationSec = this.BLOCK_DURATION_SEC;
       currentBlockStartTransportSec = 0;
-      currentBlockDurationSec = metrics0.durationSec;
+      currentBlockDurationSec = this.BLOCK_DURATION_SEC;
       this.scheduleNotesForBlock(block0, 0, 0);
 
-      // Phrase 1: Heroic Intro Fanfare (Bars 9–17)
+      // Phrase 1: Heroic Intro Fanfare (Bars 9–17, 12.8s)
       const block1 = blockMap.INTRO;
-      const metrics1 = this.getBlockMetrics(block1);
       this.upcomingBlock = block1;
-      this.upcomingBlockStartSec = metrics0.durationSec;
-      this.scheduleNotesForBlock(block1, 1, metrics0.durationSec);
+      this.scheduleNotesForBlock(block1, 1, this.BLOCK_DURATION_SEC);
 
       this.initialSequenceStage = 2; // Next will be Day 1
 
-      // Dynamic phrase boundary clock: fires at exact conclusion of Morning
+      // Master 8-bar downbeat clock: fires on exact 12.8s boundary
       this.boundaryEventId = transport.scheduleOnce((time) => {
         this.onPhraseBoundary(time);
-      }, metrics0.durationSec);
+      }, this.BLOCK_DURATION_SEC);
 
       transport.start();
     }
@@ -1200,7 +1255,7 @@ export class HyruleSequencer {
       case 'n64': // Authentic N64 Warmth (Default & Recommended)
         this.setMasterWarmth(11500);
         this.setMasterTreble(-4.0);
-        this.setMasterReverbWet(0.22);
+        this.setMasterReverbWet(0.15);
         this.setMasterVolume(-2.5);
         if (this.masterEQ) {
           this.masterEQ.low.value = 2.2;
@@ -1245,7 +1300,7 @@ export class HyruleSequencer {
       volume: this.masterVolume ? this.masterVolume.volume.value : -2.5,
       warmth: this.masterWarmthFilter ? this.masterWarmthFilter.frequency.value : 11500,
       treble: this.masterEQ ? this.masterEQ.high.value : -4.0,
-      reverbWet: this.masterReverb ? this.masterReverb.wet.value : 0.22
+      reverbWet: this.masterReverb ? this.masterReverb.wet.value : 0.15
     };
   }
 }
@@ -1284,7 +1339,7 @@ export function getActiveCueInfo() {
   const pendingMode = sequencer.pendingStateChange;
   const transportSec = Tone.getTransport() ? Tone.getTransport().seconds : 0;
   const blockStartSec = sequencer.currentBlockStartTransportSec;
-  const blockDurSec = sequencer.currentBlockDurationSec || sequencer.BLOCK_DURATION_SEC;
+  const blockDurSec = sequencer.BLOCK_DURATION_SEC;
 
   return {
     cueId: currentBlock ? currentBlock.id : 'Sunrise (Bars 1–9)',
