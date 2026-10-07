@@ -1065,6 +1065,19 @@ export class HyruleSequencer {
   }
 
   /**
+   * Returns exact duration in seconds for an 8-measure musical block.
+   * Preserves authentic rubato tempo changes for Morning intro (16.867s)
+   * while maintaining strict 12.8s segments (150 BPM) for all subsequent cues.
+   */
+  getBlockDuration(block) {
+    if (!block) return this.BLOCK_DURATION_SEC;
+    if (block === blockMap.MORNING || (block.id && block.id.startsWith('Sunrise'))) {
+      return 16.867382; // 8 bars with rubato tempo variations (280 -> 320 -> 160 -> 100 -> 95 BPM)
+    }
+    return this.BLOCK_DURATION_SEC; // Exact 12.8s for Intro and all subsequent 8-bar blocks at 150 BPM
+  }
+
+  /**
    * Schedule all MIDI notes in an 8-measure block onto Tone.Transport timeline.
    * Injects MIDI JSON CC#7 (Volume) and CC#11 (Expression) automation curves to eliminate track imbalance
    * (preventing strings from overpowering ocarina lead), and synchronizes note events exactly with 8-bar measures.
@@ -1076,7 +1089,10 @@ export class HyruleSequencer {
     const startTicks = chosenBlock.startBar * ticksPerBar;
     const endTicks = chosenBlock.endBar * ticksPerBar;
     const totalBlockTicks = endTicks - startTicks; // Exactly 8 bars in ticks (30720 ticks)
-    const blockDurationSec = this.BLOCK_DURATION_SEC; // Exact 12.8s for 8 bars at 150 BPM
+
+    const isMorning = (chosenBlock === blockMap.MORNING || (chosenBlock.id && chosenBlock.id.startsWith('Sunrise')));
+    const blockDurationSec = this.getBlockDuration(chosenBlock);
+    const morningBaseMidiTime = 1.2; // First note in Morning starts at tick 3840 (1.200s in MIDI)
 
     const eventIds = [];
     const transport = Tone.getTransport();
@@ -1107,8 +1123,13 @@ export class HyruleSequencer {
       if (blockCc11.length > 0) {
         processedInstGains.add(instKey);
         blockCc11.forEach(ccEvent => {
-          const noteFraction = (ccEvent.ticks - startTicks) / totalBlockTicks;
-          const ccTransportTime = startTransportSec + (noteFraction * blockDurationSec);
+          let ccTransportTime;
+          if (isMorning && typeof ccEvent.time === 'number') {
+            ccTransportTime = startTransportSec + Math.max(0, ccEvent.time - morningBaseMidiTime);
+          } else {
+            const noteFraction = (ccEvent.ticks - startTicks) / totalBlockTicks;
+            ccTransportTime = startTransportSec + (noteFraction * blockDurationSec);
+          }
           const raw11 = ccEvent.value;
           const exprVal = (raw11 > 1) ? (raw11 / 127) : raw11;
           const targetGain = baseCc7 * exprVal;
@@ -1134,30 +1155,61 @@ export class HyruleSequencer {
       const trackCategory = this.getTrackCategory(track, trIdx);
       const sampler = this.getSamplerForTrack(trIdx);
       const isOcarina = (trIdx === 25 || this.getInstrumentKeyForTrack(trIdx) === 'ocarina');
+      const isFlute = (trIdx === 13 || this.getInstrumentKeyForTrack(trIdx) === 'flute');
 
       const notesInBlock = track.notes.filter(note =>
         note.ticks >= startTicks && note.ticks < endTicks
       );
 
       notesInBlock.forEach((note) => {
-        const noteFraction = (note.ticks - startTicks) / totalBlockTicks;
-        const relativeSec = noteFraction * blockDurationSec;
-        const noteTransportTime = startTransportSec + relativeSec;
+        let noteTransportTime;
+        let noteDurationSec;
 
-        let noteDurationSec = (note.durationTicks / totalBlockTicks) * blockDurationSec;
-        if (isNaN(noteDurationSec) || noteDurationSec <= 0) {
-          noteDurationSec = note.duration || 0.2;
+        if (isMorning) {
+          // Preserve authentic tempo variations for Morning: first notes play as true eighth notes at 280 BPM (~107ms)
+          const relSec = Math.max(0, note.time - morningBaseMidiTime);
+          noteTransportTime = startTransportSec + relSec;
+          noteDurationSec = (typeof note.duration === 'number' && note.duration > 0)
+            ? note.duration
+            : (note.durationTicks / totalBlockTicks) * blockDurationSec;
+        } else {
+          // Strict time-based segments (12.8s per 8 bars at 150 BPM) for all subsequent cues
+          const noteFraction = (note.ticks - startTicks) / totalBlockTicks;
+          const relativeSec = noteFraction * blockDurationSec;
+          noteTransportTime = startTransportSec + relativeSec;
+          noteDurationSec = (note.durationTicks / totalBlockTicks) * blockDurationSec;
+          if (isNaN(noteDurationSec) || noteDurationSec <= 0) {
+            noteDurationSec = note.duration || 0.2;
+          }
         }
 
-        // Authentic pitch transposition for Ocarina:
-        // In the raw MIDI, Ocarina (Track 25) is transcribed 2 octaves too high (A6..G7 / MIDI 83..105).
-        // Transposing down 24 semitones (-2 octaves) restores Link's rich alto/tenor ocarina register (A4..D5 / MIDI 59..81),
-        // matching the 00_ALL.sf2 Ocarina sample root pitch (Ab4 / MIDI 68) and eliminating harsh/shrill screeching.
+        // Authentic pitch transposition:
+        // 1. Morning intro: Ocarina (Track 25) was written in high octave 6-7 (A6..G7 / MIDI 89..103).
+        //    Transposing down 12 semitones (-1 octave) restores the bright singing soprano ocarina (A5, F5, D6),
+        //    correcting the previous issue where -24 made it sound too low (A4/F4/D5).
+        // 2. Other cues: Ocarina in other cues (e.g. Day 6 pastoral rest, Night 1) is transposed down
+        //    24 semitones (-2 octaves) to maintain Link's warm alto/tenor ocarina register (B3..G4) and eliminate high shrillness.
+        // 3. Lead flutes in other cues (e.g. Intro fanfare) when in octave 6+ (>= 80) are transposed down
+        //    12 semitones to blend with the brass/strings without piercing high frequencies.
         let playMidi = note.midi;
         let playName = note.name;
-        if (isOcarina && note.midi >= 80) {
-          playMidi = note.midi - 24;
-          playName = midiToNoteName(playMidi);
+        if (isOcarina) {
+          if (isMorning) {
+            if (note.midi >= 80) {
+              playMidi = note.midi - 12; // -1 octave: A5, F5, D6 (soprano ocarina)
+              playName = midiToNoteName(playMidi);
+            }
+          } else {
+            if (note.midi >= 80) {
+              playMidi = note.midi - 24; // -2 octaves: B3, C4, D4... (alto register)
+              playName = midiToNoteName(playMidi);
+            }
+          }
+        } else if (isFlute && !isMorning) {
+          if (note.midi >= 80) {
+            playMidi = note.midi - 12; // Tame shrill high flute notes in other cues
+            playName = midiToNoteName(playMidi);
+          }
         }
 
         const noteToPlay = (playMidi !== note.midi)
@@ -1231,7 +1283,9 @@ export class HyruleSequencer {
    */
   requeueUpcomingPhrase(forcedTargetState = null) {
     const upcomingPhraseIdx = this.phraseIndex + 1;
-    const upcomingStartTransportSec = upcomingPhraseIdx * this.BLOCK_DURATION_SEC;
+    const upcomingStartTransportSec = (typeof this.upcomingBlockStartSec === 'number' && this.upcomingBlockStartSec > 0)
+      ? this.upcomingBlockStartSec
+      : (this.currentBlockStartTransportSec + this.currentBlockDurationSec);
 
     // 1. Cancel previous upcoming phrase events
     this.clearPhraseEvents(upcomingPhraseIdx);
@@ -1249,7 +1303,8 @@ export class HyruleSequencer {
   }
 
   /**
-   * Master 8-bar phrase downbeat clock: fires precisely at every 8-measure boundary (12.8s)
+   * Master 8-bar phrase downbeat clock: dynamically tracks the active block's completion
+   * (Morning 16.867s rubato), and phase-locks precisely to 12.8s measures from Intro onwards.
    */
   onPhraseBoundary(timelineTime) {
     const audioTime = timelineTime || Tone.now();
@@ -1260,12 +1315,16 @@ export class HyruleSequencer {
     // 2. The pre-queued upcoming block now becomes the active block
     this.phraseIndex++;
     this.currentBlock = this.upcomingBlock;
-    const startTransportSec = this.phraseIndex * this.BLOCK_DURATION_SEC;
+    const startTransportSec = (typeof this.upcomingBlockStartSec === 'number' && this.upcomingBlockStartSec > 0)
+      ? this.upcomingBlockStartSec
+      : (this.currentBlockStartTransportSec + this.currentBlockDurationSec);
+
+    const blockDurSec = this.getBlockDuration(this.currentBlock);
 
     this.currentBlockStartTransportSec = startTransportSec;
-    this.currentBlockDurationSec = this.BLOCK_DURATION_SEC;
+    this.currentBlockDurationSec = blockDurSec;
     currentBlockStartTransportSec = startTransportSec;
-    currentBlockDurationSec = this.BLOCK_DURATION_SEC;
+    currentBlockDurationSec = blockDurSec;
 
     // Immediately advance state so lookahead pre-queuing selects the next sequence
     if (this.currentBlock === blockMap.BATTLE_INTRO) {
@@ -1276,7 +1335,8 @@ export class HyruleSequencer {
 
     // 3. Pre-queue the NEXT upcoming block ahead of time (1 block lookahead)
     const nextPhraseIdx = this.phraseIndex + 1;
-    const nextStartTransportSec = nextPhraseIdx * this.BLOCK_DURATION_SEC;
+    const nextStartTransportSec = startTransportSec + blockDurSec;
+    this.upcomingBlockStartSec = nextStartTransportSec;
 
     const nextBlock = this.selectBlockForState(this.currentState);
     this.upcomingBlock = nextBlock;
@@ -1321,26 +1381,28 @@ export class HyruleSequencer {
       this.quietBag.reset();
 
       // Startup Sequence:
-      // Phrase 0: Morning Sunrise cue (Bars 1–9, 12.8s)
+      // Phrase 0: Morning Sunrise cue (Bars 1–9) with authentic rubato tempo variations (16.867s)
       const block0 = blockMap.MORNING;
+      const dur0 = this.getBlockDuration(block0);
       this.currentBlock = block0;
       this.currentBlockStartTransportSec = 0;
-      this.currentBlockDurationSec = this.BLOCK_DURATION_SEC;
+      this.currentBlockDurationSec = dur0;
       currentBlockStartTransportSec = 0;
-      currentBlockDurationSec = this.BLOCK_DURATION_SEC;
+      currentBlockDurationSec = dur0;
       this.scheduleNotesForBlock(block0, 0, 0);
 
       // Phrase 1: Heroic Intro Fanfare (Bars 9–17, 12.8s)
       const block1 = blockMap.INTRO;
       this.upcomingBlock = block1;
-      this.scheduleNotesForBlock(block1, 1, this.BLOCK_DURATION_SEC);
+      this.upcomingBlockStartSec = dur0;
+      this.scheduleNotesForBlock(block1, 1, dur0);
 
       this.initialSequenceStage = 2; // Next will be Day 1
 
-      // Master 8-bar downbeat clock: fires on exact 12.8s boundary
+      // Master phrase downbeat clock: fires at exact conclusion of Morning
       this.boundaryEventId = transport.scheduleOnce((time) => {
         this.onPhraseBoundary(time);
-      }, this.BLOCK_DURATION_SEC);
+      }, dur0);
 
       transport.start();
     }
@@ -1479,7 +1541,7 @@ export function getActiveCueInfo() {
   const pendingMode = sequencer.pendingStateChange;
   const transportSec = Tone.getTransport() ? Tone.getTransport().seconds : 0;
   const blockStartSec = sequencer.currentBlockStartTransportSec;
-  const blockDurSec = sequencer.BLOCK_DURATION_SEC;
+  const blockDurSec = sequencer.currentBlockDurationSec || sequencer.BLOCK_DURATION_SEC;
 
   return {
     cueId: currentBlock ? currentBlock.id : 'Sunrise (Bars 1–9)',
