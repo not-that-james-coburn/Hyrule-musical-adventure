@@ -211,6 +211,136 @@ class ShuffleBag {
   }
 }
 
+/**
+ * Dedicated, Responsive N64 Ocarina Patch
+ * Emulates Koji Kondo's signature Zelda: OoT ocarina audio architecture:
+ * 1. Pure whistle tone: Triangle oscillator with 15ms portamento pitch sliding
+ * 2. Breathiness: Filtered white noise (lowpass 1200Hz, 0.04 gain)
+ * 3. N64 Envelope: 160ms smooth air-rise attack, 100ms decay, 0.8 sustain, 280ms lingering release
+ * 4. Vibrato LFO: 5.5Hz pitch vibrato with +/-25 cents depth
+ */
+class N64OcarinaVoice {
+  constructor(vibratoLFO, breathNoiseSource, outputNode) {
+    // 1. Core whistle tone oscillator with portamento and amplitude envelope
+    this.synth = new Tone.Synth({
+      oscillator: {
+        type: 'triangle' // Triangle wave provides the core pure whistle tone
+      },
+      envelope: {
+        attack: 0.16,  // Smooth air-rise ramp (160ms)
+        decay: 0.1,    // 100ms decay
+        sustain: 0.8,  // 80% sustained whistle body
+        release: 0.28  // Naturally lingering fade (280ms)
+      },
+      portamento: 0.015 // 15ms glide prevents stepping notes
+    });
+
+    // 4. Hook up LFO for Pitch Vibrato to detune (-25 to +25 cents at 5.5Hz)
+    vibratoLFO.connect(this.synth.detune);
+    this.synth.connect(outputNode);
+
+    // 1 & 2. Gated breath noise envelope
+    this.noiseEnvelope = new Tone.AmplitudeEnvelope({
+      attack: 0.16,
+      decay: 0.1,
+      sustain: 0.8,
+      release: 0.28
+    });
+    breathNoiseSource.connect(this.noiseEnvelope);
+    this.noiseEnvelope.connect(outputNode);
+  }
+
+  triggerAttackRelease(noteName, durationSec, time, velocity = 0.8, glideFromFreq = null) {
+    this.synth.triggerAttackRelease(noteName, durationSec, time, velocity);
+    if (glideFromFreq) {
+      try {
+        const targetFreq = Tone.Frequency(noteName).toFrequency();
+        this.synth.frequency.cancelScheduledValues(time);
+        this.synth.frequency.setValueAtTime(glideFromFreq, time);
+        this.synth.frequency.exponentialRampTo(targetFreq, 0.015, time);
+      } catch (e) {}
+    }
+    this.noiseEnvelope.triggerAttackRelease(durationSec, time, velocity);
+  }
+
+  release(time) {
+    try { this.synth.triggerRelease(time); } catch (e) {}
+    try { this.noiseEnvelope.triggerRelease(time); } catch (e) {}
+  }
+}
+
+export class N64Ocarina {
+  constructor() {
+    this.loaded = true;
+    this.volume = new Tone.Volume(-2.0);
+    this.output = new Tone.Gain(1.0).connect(this.volume);
+
+    // 1. Add "Breathiness" (Koji Kondo blended low-level white noise with the waveform)
+    this.breathNoise = new Tone.Noise('white');
+    this.noiseFilter = new Tone.Filter(1200, 'lowpass');
+    this.noiseGain = new Tone.Gain(0.04);
+    this.breathNoise.connect(this.noiseFilter).connect(this.noiseGain);
+    try {
+      this.breathNoise.start();
+    } catch (e) {}
+
+    // 4. Hook up a LFO for Pitch Vibrato (5.5Hz speed, +/-25 cents depth)
+    this.vibratoLFO = new Tone.LFO({
+      frequency: 5.5,
+      min: -25,
+      max: 25
+    });
+    try {
+      this.vibratoLFO.start();
+    } catch (e) {}
+
+    // Polyphonic voice pool: 3 voices to allow natural lingering releases without voice truncation
+    this.voices = [
+      new N64OcarinaVoice(this.vibratoLFO, this.noiseGain, this.output),
+      new N64OcarinaVoice(this.vibratoLFO, this.noiseGain, this.output),
+      new N64OcarinaVoice(this.vibratoLFO, this.noiseGain, this.output)
+    ];
+    this.voiceIndex = 0;
+    this.lastFreq = null;
+    this.lastEndTime = 0;
+  }
+
+  start() {
+    try { this.breathNoise.start(); } catch (e) {}
+    try { this.vibratoLFO.start(); } catch (e) {}
+  }
+
+  connect(destination) {
+    this.volume.connect(destination);
+    return this;
+  }
+
+  triggerAttackRelease(noteName, durationSec, time, velocity = 0.8) {
+    const v = this.voices[this.voiceIndex];
+    this.voiceIndex = (this.voiceIndex + 1) % this.voices.length;
+
+    let glideFrom = null;
+    try {
+      const targetFreq = Tone.Frequency(noteName).toFrequency();
+      if (this.lastFreq && (time <= this.lastEndTime + 0.08)) {
+        glideFrom = this.lastFreq;
+      }
+      this.lastFreq = targetFreq;
+      this.lastEndTime = time + durationSec;
+    } catch (e) {}
+
+    v.triggerAttackRelease(noteName, durationSec, time, velocity, glideFrom);
+  }
+
+  releaseAll() {
+    this.lastFreq = null;
+    this.lastEndTime = 0;
+    this.voices.forEach(v => {
+      try { v.release(); } catch (e) {}
+    });
+  }
+}
+
 export class HyruleSequencer {
   constructor() {
     // Canonical musical modes: 'EXPLORATION', 'QUIET', 'BATTLE'
@@ -434,7 +564,6 @@ export class HyruleSequencer {
       pickBass: { filter: k => k.startsWith('Pizzicato Low') || k.startsWith('Strings Low') || k.startsWith('Bassoon'), defaultVol: -3.0 },
       flute: { filter: k => k.startsWith('Flute'), defaultVol: -5.0 },
       tenorSax: { filter: k => k.startsWith('Clarinet') || k.startsWith('Oboe') || k.startsWith('Bassoon'), defaultVol: -5.0 },
-      ocarina: { filter: k => k.startsWith('Ocarina'), defaultVol: -5.0 },
       harp: { filter: k => k.startsWith('Harp High') || k.startsWith('Harp Low'), defaultVol: -4.0 },
       accordion: { filter: k => k.startsWith('Accordion'), defaultVol: -5.0 },
       marimba: { filter: k => k.startsWith('Marimba'), defaultVol: -4.5 },
@@ -470,6 +599,7 @@ export class HyruleSequencer {
       this.instGains[instKey] = new Tone.Gain(1.0);
     }
     this.instGains.percussion = new Tone.Gain(1.0);
+    this.instGains.ocarina = new Tone.Gain(1.0);
 
     for (const [instKey, spec] of Object.entries(sampleSpecs)) {
       const urls = this.buildSamplerUrls(spec.filter);
@@ -484,7 +614,7 @@ export class HyruleSequencer {
         if (instKey === 'trumpet' || instKey === 'trombone' || instKey === 'brassSection') {
           // Route brass through dedicated anti-glare warmth filter
           this.instGains[instKey].connect(this.brassFilter);
-        } else if (instKey === 'ocarina' || instKey === 'flute' || instKey === 'tenorSax') {
+        } else if (instKey === 'flute' || instKey === 'tenorSax') {
           // Route lead woodwinds through smooth roll-off filter
           this.instGains[instKey].connect(this.woodwindFilter);
         } else if (instKey === 'snare' || instKey === 'tom' || instKey === 'hihat' || instKey === 'kick') {
@@ -501,6 +631,13 @@ export class HyruleSequencer {
         samplers[instKey] = sampler;
       }
     }
+
+    // Dedicated, responsive N64 Ocarina synthesis engine (Koji Kondo patch architecture:
+    // Pure triangle whistle + 15ms portamento + 1200Hz filtered breath noise + 5.5Hz pitch vibrato LFO)
+    const ocarinaPatch = new N64Ocarina();
+    ocarinaPatch.connect(this.instGains.ocarina);
+    this.instGains.ocarina.connect(this.woodwindFilter);
+    samplers.ocarina = ocarinaPatch;
 
     // High-performance monophonic drum synths: zero voice leakage or PolySynth node accumulation
     const kickSynth = new Tone.MembraneSynth({
@@ -1166,6 +1303,9 @@ export class HyruleSequencer {
 
   async startEngine() {
     await Tone.start();
+    if (this.soundRack?.samplers?.ocarina?.start) {
+      this.soundRack.samplers.ocarina.start();
+    }
     const transport = Tone.getTransport();
 
     if (transport.state !== 'started') {
