@@ -252,12 +252,16 @@ export class HyruleSequencer {
     // Dedicated Per-Channel Nodes (MIDI Channels 0–15)
     this.channelGains = {};
     this.channelReverbSends = {};
+    this.channelChorusSends = {};
     this.channelVibratos = {};
     this.sfxBus = null;
     this.sfxReverbSend = null;
     this.reverbBus = null;
     this.reverbEffect = null;
     this.reverbReturnGain = null;
+    this.chorusBus = null;
+    this.chorusEffect = null;
+    this.chorusReturnGain = null;
     this.n64Filter = null;
     this.masterEQ = null;
 
@@ -341,14 +345,32 @@ export class HyruleSequencer {
       this.reverbEffect.connect(this.reverbReturnGain);
       this.reverbReturnGain.connect(this.masterPreBus);
 
-      // 3. Build dedicated Channel Gains and Reverb Send Nodes for MIDI Channels 0–15
+      // 3. Authentic N64 Microcode Stereo Chorus Bus (CC#93)
+      this.chorusBus = new Tone.Gain(1.0);
+      this.chorusEffect = new Tone.Chorus({
+        frequency: 1.5,
+        delayTime: 3.5,
+        depth: 0.7,
+        spread: 180,
+        wet: 1.0
+      }).start();
+      this.chorusReturnGain = new Tone.Gain(0.60);
+      this.chorusBus.connect(this.chorusEffect);
+      this.chorusEffect.connect(this.chorusReturnGain);
+      this.chorusReturnGain.connect(this.masterPreBus);
+
+      // 4. Build dedicated Channel Gains, Reverb Send & Chorus Send Nodes for MIDI Channels 0–15
       for (let ch = 0; ch <= 15; ch++) {
         this.channelGains[ch] = new Tone.Gain(1.0);
         this.channelReverbSends[ch] = new Tone.Gain(0.0);
+        this.channelChorusSends[ch] = new Tone.Gain(0.0);
 
-        // Connect Channel Gain to Reverb Send (post-fader) and then to Reverb Bus
+        // Connect Channel Gain to Reverb Send & Chorus Send (post-fader)
         this.channelGains[ch].connect(this.channelReverbSends[ch]);
         this.channelReverbSends[ch].connect(this.reverbBus);
+
+        this.channelGains[ch].connect(this.channelChorusSends[ch]);
+        this.channelChorusSends[ch].connect(this.chorusBus);
 
         // Connect Channel Gain to dynamic stems
         if (ch === 9 || ch === 14) {
@@ -581,6 +603,7 @@ export class HyruleSequencer {
       samplers,
       channelGains: this.channelGains,
       channelReverbSends: this.channelReverbSends,
+      channelChorusSends: this.channelChorusSends,
       instGains: this.instGains,
       releaseAll
     };
@@ -1216,7 +1239,7 @@ export class HyruleSequencer {
     const transport = Tone.getTransport();
 
     // -------------------------------------------------------------------------
-    // 1. Parse & Inject MIDI JSON CC#7 (Volume), CC#11 (Expression) & CC#91 (Reverb) per Channel (0–15)
+    // 1. Parse & Inject MIDI JSON CC#7 (Volume), CC#11 (Expression), CC#91 (Reverb) & CC#93 (Chorus) per Channel (0–15)
     // -------------------------------------------------------------------------
     const defaultReverbSends = {
       0: 0.47,  // Trombone (hall)
@@ -1237,9 +1260,29 @@ export class HyruleSequencer {
       15: 0.00  // Contrabass (dry low end)
     };
 
+    const defaultChorusSends = {
+      0: 0.28,  // Trombone (subtle ensemble width 24-31%)
+      1: 0.00,  // Trumpet (focused center)
+      2: 0.00,  // Brass Section
+      3: 0.24,  // String Ensemble 1 (authentic 24% N64 stereo ensemble spread)
+      4: 0.00,  // Tenor Sax
+      5: 0.00,  // Flute (pure center woodwind)
+      6: 0.00,  // Harp
+      7: 0.00,  // Accordion
+      8: 0.00,  // Bass (dry & centered)
+      9: 0.00,  // Standard Drum Kit (punchy & dry)
+      10: 0.00, // Marimba
+      11: 0.63, // Ocarina (ethereal 63% wide stereo chorus)
+      12: 0.00, // Vibraphone
+      13: 0.24, // String Ensemble 2 (matches Strings 1 for stereo section width)
+      14: 0.00, // Timpani
+      15: 0.00  // Contrabass (dry low end)
+    };
+
     for (let ch = 0; ch <= 15; ch++) {
       const channelGain = this.channelGains ? this.channelGains[ch] : null;
       const reverbSend = this.channelReverbSends ? this.channelReverbSends[ch] : null;
+      const chorusSend = this.channelChorusSends ? this.channelChorusSends[ch] : null;
       if (!channelGain || !reverbSend) continue;
 
       const chTracks = this.midiData.tracks.filter(t => t.channel === ch);
@@ -1249,6 +1292,7 @@ export class HyruleSequencer {
       let baseCc7 = 1.0;
       let foundCc7 = false;
       let targetCc91 = (typeof defaultReverbSends[ch] === 'number') ? defaultReverbSends[ch] : 0.40;
+      let targetCc93 = (typeof defaultChorusSends[ch] === 'number') ? defaultChorusSends[ch] : 0.00;
 
       chTracks.forEach(t => {
         if (t.controlChanges) {
@@ -1261,6 +1305,10 @@ export class HyruleSequencer {
             const raw91 = t.controlChanges['91'][0].value;
             targetCc91 = (raw91 > 1) ? (raw91 / 127) : raw91;
           }
+          if (t.controlChanges['93'] && t.controlChanges['93'].length > 0) {
+            const raw93 = t.controlChanges['93'][0].value;
+            targetCc93 = (raw93 > 1) ? (raw93 / 127) : raw93;
+          }
         }
       });
 
@@ -1269,6 +1317,39 @@ export class HyruleSequencer {
         reverbSend.gain.setValueAtTime(targetCc91, time);
       }, startTransportSec);
       eventIds.push({ id: evReverb, time: startTransportSec });
+
+      // Schedule CC#93 Chorus Send for this channel at block start
+      if (chorusSend) {
+        const evChorus = transport.scheduleOnce((time) => {
+          chorusSend.gain.setValueAtTime(targetCc93, time);
+        }, startTransportSec);
+        eventIds.push({ id: evChorus, time: startTransportSec });
+      }
+
+      // Collect all CC#93 Chorus events on this channel within this 8-bar block if dynamic curve points exist
+      const blockCc93 = [];
+      chTracks.forEach(t => {
+        if (t.controlChanges && t.controlChanges['93']) {
+          t.controlChanges['93'].forEach(e => {
+            if (e.ticks >= startTicks && e.ticks < endTicks) {
+              blockCc93.push(e);
+            }
+          });
+        }
+      });
+      blockCc93.sort((a, b) => a.ticks - b.ticks);
+      if (blockCc93.length > 0 && chorusSend) {
+        blockCc93.forEach(ccEvent => {
+          const ccRelSec = Math.max(0, ccEvent.time - blockStartMidiSec);
+          const ccTransportTime = startTransportSec + ccRelSec;
+          const raw93 = ccEvent.value;
+          const chorusVal = (raw93 > 1) ? (raw93 / 127) : raw93;
+          const evId = transport.scheduleOnce((time) => {
+            chorusSend.gain.setValueAtTime(chorusVal, time);
+          }, ccTransportTime);
+          eventIds.push({ id: evId, time: ccTransportTime });
+        });
+      }
 
       // Collect all CC#11 Expression events on this channel within this 8-bar block
       const blockCc11 = [];
@@ -1559,6 +1640,11 @@ export class HyruleSequencer {
           this.channelReverbSends[ch].gain.cancelScheduledValues(now);
         } catch (e) {}
       }
+      if (this.channelChorusSends[ch]) {
+        try {
+          this.channelChorusSends[ch].gain.cancelScheduledValues(now);
+        } catch (e) {}
+      }
     }
   }
 
@@ -1588,12 +1674,19 @@ export class HyruleSequencer {
     }
   }
 
+  setMasterChorusWet(wetRatio) {
+    if (this.chorusReturnGain) {
+      this.chorusReturnGain.gain.value = Math.max(0, Math.min(1.5, wetRatio * 1.1));
+    }
+  }
+
   setMixerPreset(presetName) {
     switch (presetName) {
       case 'n64': // Authentic N64 RSP Warmth (Default & Recommended)
         this.setMasterWarmth(13500);
         this.setMasterTreble(0.0);
         this.setMasterReverbWet(0.60);
+        this.setMasterChorusWet(0.55);
         this.setMasterVolume(-2.0);
         if (this.masterEQ) {
           this.masterEQ.low.value = 0.5;
@@ -1604,6 +1697,7 @@ export class HyruleSequencer {
         this.setMasterWarmth(15000);
         this.setMasterTreble(1.5);
         this.setMasterReverbWet(0.85);
+        this.setMasterChorusWet(0.40);
         this.setMasterVolume(-2.5);
         if (this.masterEQ) {
           this.masterEQ.low.value = 1.0;
@@ -1614,6 +1708,7 @@ export class HyruleSequencer {
         this.setMasterWarmth(9500);
         this.setMasterTreble(-3.0);
         this.setMasterReverbWet(0.40);
+        this.setMasterChorusWet(0.30);
         this.setMasterVolume(-2.0);
         if (this.masterEQ) {
           this.masterEQ.low.value = 1.5;
@@ -1624,6 +1719,7 @@ export class HyruleSequencer {
         this.setMasterWarmth(20000);
         this.setMasterTreble(2.0);
         this.setMasterReverbWet(0.50);
+        this.setMasterChorusWet(0.65);
         this.setMasterVolume(-2.5);
         if (this.masterEQ) {
           this.masterEQ.low.value = 0.0;
@@ -1638,7 +1734,8 @@ export class HyruleSequencer {
       volume: this.masterVolume ? this.masterVolume.volume.value : -2.0,
       warmth: this.n64Filter ? this.n64Filter.frequency.value : 13500,
       treble: this.masterEQ ? this.masterEQ.high.value : 0.0,
-      reverbWet: this.reverbReturnGain ? Math.min(1.0, this.reverbReturnGain.gain.value / 1.1) : 0.60
+      reverbWet: this.reverbReturnGain ? Math.min(1.0, this.reverbReturnGain.gain.value / 1.1) : 0.60,
+      chorusWet: this.chorusReturnGain ? Math.min(1.0, this.chorusReturnGain.gain.value / 1.1) : 0.55
     };
   }
 
@@ -1834,6 +1931,7 @@ export function setMixerParameter(param, value) {
   else if (param === 'warmth') sequencer.setMasterWarmth(value);
   else if (param === 'treble') sequencer.setMasterTreble(value);
   else if (param === 'reverb') sequencer.setMasterReverbWet(value);
+  else if (param === 'chorus') sequencer.setMasterChorusWet(value);
 }
 
 export function setMixerPreset(presetName) {

@@ -64,36 +64,45 @@
                     <div class="mixer-control">
                         <div class="control-label-row">
                             <span class="ctrl-name">Warmth (N64 Lowpass)</span>
-                            <span id="val-warmth" class="ctrl-val">11.5 kHz</span>
+                            <span id="val-warmth" class="ctrl-val">13.5 kHz</span>
                         </div>
-                        <input id="slider-warmth" type="range" min="6000" max="18000" step="250" value="11500" class="nintendo-slider">
+                        <input id="slider-warmth" type="range" min="6000" max="18000" step="250" value="13500" class="nintendo-slider">
                         <span class="ctrl-hint">Filters digital sample aliasing</span>
                     </div>
 
                     <div class="mixer-control">
                         <div class="control-label-row">
                             <span class="ctrl-name">Treble / Shrill Cut</span>
-                            <span id="val-treble" class="ctrl-val">-4.0 dB</span>
+                            <span id="val-treble" class="ctrl-val">0.0 dB</span>
                         </div>
-                        <input id="slider-treble" type="range" min="-10" max="2" step="0.5" value="-4.0" class="nintendo-slider">
+                        <input id="slider-treble" type="range" min="-10" max="4" step="0.5" value="0.0" class="nintendo-slider">
                         <span class="ctrl-hint">Reduces high-octave harshness</span>
                     </div>
 
                     <div class="mixer-control">
                         <div class="control-label-row">
                             <span class="ctrl-name">Reverb Ambiance</span>
-                            <span id="val-reverb" class="ctrl-val">22%</span>
+                            <span id="val-reverb" class="ctrl-val">55%</span>
                         </div>
-                        <input id="slider-reverb" type="range" min="0" max="50" step="1" value="22" class="nintendo-slider">
+                        <input id="slider-reverb" type="range" min="0" max="100" step="1" value="55" class="nintendo-slider">
                         <span class="ctrl-hint">Concert hall acoustic space</span>
                     </div>
 
                     <div class="mixer-control">
                         <div class="control-label-row">
-                            <span class="ctrl-name">Master Volume</span>
-                            <span id="val-volume" class="ctrl-val">-2.5 dB</span>
+                            <span class="ctrl-name">Stereo Chorus (CC#93)</span>
+                            <span id="val-chorus" class="ctrl-val">50%</span>
                         </div>
-                        <input id="slider-volume" type="range" min="-18" max="0" step="0.5" value="-2.5" class="nintendo-slider">
+                        <input id="slider-chorus" type="range" min="0" max="100" step="1" value="50" class="nintendo-slider">
+                        <span class="ctrl-hint">N64 microcode spatial width</span>
+                    </div>
+
+                    <div class="mixer-control full-width">
+                        <div class="control-label-row">
+                            <span class="ctrl-name">Master Volume</span>
+                            <span id="val-volume" class="ctrl-val">-2.0 dB</span>
+                        </div>
+                        <input id="slider-volume" type="range" min="-18" max="0" step="0.5" value="-2.0" class="nintendo-slider">
                         <span class="ctrl-hint">Master bus output level</span>
                     </div>
                 </div>
