@@ -56,56 +56,56 @@ export const blockMap = {
   // Ongoing Exploration Pool (shuffled via ShuffleBag, no sequential repeats)
   EXPLORATION: [
     {
-      id: 'Day 1 (Bars 17–25)',
+      id: 'Running 1 (Bars 17–25)',
       name: 'Main Theme A (Overworld)',
       startBar: 17,
       endBar: 25,
       mode: 'EXPLORATION'
     },
     {
-      id: 'Day 2 (Bars 25–33)',
+      id: 'Running 2 (Bars 25–33)',
       name: 'Heroic March Variation',
       startBar: 25,
       endBar: 33,
       mode: 'EXPLORATION'
     },
     {
-      id: 'Day 3 (Bars 33–41)',
+      id: 'Running 3 (Bars 33–41)',
       name: 'Expansive Horizons Brass',
       startBar: 33,
       endBar: 41,
       mode: 'EXPLORATION'
     },
     {
-      id: 'Day 4 (Bars 41–49)',
+      id: 'Running 4 (Bars 41–49)',
       name: 'Adventure Motif Flourish',
       startBar: 41,
       endBar: 49,
       mode: 'EXPLORATION'
     },
     {
-      id: 'Day 5 (Bars 49–57)',
+      id: 'Running 5 (Bars 49–57)',
       name: 'Plains Bridge & Strings',
       startBar: 49,
       endBar: 57,
       mode: 'EXPLORATION'
     },
     {
-      id: 'Day 6 (Bars 57–65)',
+      id: 'Running 6 (Bars 57–65)',
       name: 'Woodwinds & Pastoral Rest',
       startBar: 57,
       endBar: 65,
       mode: 'EXPLORATION'
     },
     {
-      id: 'Day 7 (Bars 121–129)',
+      id: 'Running 7 (Bars 121–129)',
       name: 'Triumphant Return Flourish',
       startBar: 121,
       endBar: 129,
       mode: 'EXPLORATION'
     },
     {
-      id: 'Day 8 (Bars 129–137)',
+      id: 'Running 8 (Bars 129–137)',
       name: 'Ocarina & Winds Interlude',
       startBar: 129,
       endBar: 137,
@@ -221,7 +221,9 @@ class ShuffleBag {
     this.lastItem = null;
   }
 
-  next() {
+  next(excludeItem = null) {
+    const avoid = excludeItem || this.lastItem;
+
     if (this.bag.length === 0) {
       let candidates = [...this.items];
       // Fisher-Yates shuffle
@@ -229,15 +231,44 @@ class ShuffleBag {
         const j = Math.floor(Math.random() * (i + 1));
         [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
       }
-      // If the first candidate to be drawn matches the last played item, swap with first item in bag
-      if (candidates.length > 1 && candidates[candidates.length - 1] === this.lastItem) {
-        [candidates[candidates.length - 1], candidates[0]] = [candidates[0], candidates[candidates.length - 1]];
+      // If the candidate to be drawn matches the avoided item, swap with another item
+      if (candidates.length > 1 && candidates[candidates.length - 1] === avoid) {
+        for (let i = 0; i < candidates.length - 1; i++) {
+          if (candidates[i] !== avoid) {
+            [candidates[candidates.length - 1], candidates[i]] = [candidates[i], candidates[candidates.length - 1]];
+            break;
+          }
+        }
       }
       this.bag = candidates;
     }
+
+    // Safety check: if top of bag matches avoid, swap with another candidate in bag
+    if (this.bag.length > 1 && this.bag[this.bag.length - 1] === avoid) {
+      for (let i = 0; i < this.bag.length - 1; i++) {
+        if (this.bag[i] !== avoid) {
+          [this.bag[this.bag.length - 1], this.bag[i]] = [this.bag[i], this.bag[this.bag.length - 1]];
+          break;
+        }
+      }
+    }
+
     const item = this.bag.pop();
     this.lastItem = item;
     return item;
+  }
+
+  setLastItem(item) {
+    this.lastItem = item;
+    // Swap out top of bag if it matches to avoid immediate repeat
+    if (this.bag.length > 1 && this.bag[this.bag.length - 1] === item) {
+      for (let i = 0; i < this.bag.length - 1; i++) {
+        if (this.bag[i] !== item) {
+          [this.bag[this.bag.length - 1], this.bag[i]] = [this.bag[i], this.bag[this.bag.length - 1]];
+          break;
+        }
+      }
+    }
   }
 
   reset() {
@@ -932,36 +963,41 @@ export class HyruleSequencer {
 
     if (newState === 'BATTLE') {
       if (!inCombat) {
-        // Fast 1-Measure Combat Interrupt: Enemy spotted! Danger sting strikes immediately
-        this.playDangerSting(Tone.now());
+        // Fast 1-Measure Combat Interrupt: Enemy spotted! Transition straight to combat fanfare (zero SFX)
         this.executeMeasureInterrupt(blockMap.BATTLE_INTRO, 'BATTLE');
       }
     } else if (newState === 'EXPLORATION' && inCombat) {
       // Fast 1-Measure Combat Resolution: Enemy defeated! Burst into Victory on next measure downbeat
       this.postBattleState = 'EXPLORATION';
+      this.linkMovementState = 'RUNNING';
       this.executeMeasureInterrupt(blockMap.BATTLE_OUTRO, 'EXPLORATION');
     } else if (newState === 'QUIET' && inCombat) {
       // Rest mode selected during Battle: Play Victory on next measure downbeat, then settle into Quiet
       this.postBattleState = 'QUIET';
+      this.linkMovementState = 'IDLE';
       this.executeMeasureInterrupt(blockMap.BATTLE_OUTRO, 'QUIET');
     } else if (newState === 'QUIET' && this.currentState === 'EXPLORATION') {
       // Immediate volume crossfade mid-bar into serene Rest mode
+      this.linkMovementState = 'IDLE';
       this.executeMovementCrossfade('QUIET');
       this.currentState = 'QUIET';
       this.pendingStateChange = 'QUIET';
       this.requeueUpcomingPhrase('QUIET');
     } else if (newState === 'EXPLORATION' && this.currentState === 'QUIET') {
-      // Immediate volume crossfade mid-bar into active Adventure mode
+      // Immediate volume crossfade mid-bar into active Run mode
+      this.linkMovementState = 'RUNNING';
       this.executeMovementCrossfade('EXPLORATION');
       this.currentState = 'EXPLORATION';
       this.pendingStateChange = 'EXPLORATION';
       this.requeueUpcomingPhrase('EXPLORATION');
     } else if (newState === 'EXPLORATION') {
+      this.linkMovementState = 'RUNNING';
       this.executeMovementCrossfade('EXPLORATION');
       this.currentState = 'EXPLORATION';
       this.pendingStateChange = 'EXPLORATION';
       this.requeueUpcomingPhrase('EXPLORATION');
     } else if (newState === 'QUIET') {
+      this.linkMovementState = 'IDLE';
       this.executeMovementCrossfade('QUIET');
       this.currentState = 'QUIET';
       this.pendingStateChange = 'QUIET';
@@ -970,7 +1006,7 @@ export class HyruleSequencer {
   }
 
   /**
-   * Mid-bar real-time volume crossfade for Link movement (Running vs Standing Still) and quiet/idle mode
+   * Mid-bar real-time volume crossfade for Run vs Rest mode dynamic instrumentation
    */
   executeMovementCrossfade(target = this.linkMovementState) {
     const now = Tone.now();
@@ -989,18 +1025,13 @@ export class HyruleSequencer {
     harpGain.cancelScheduledValues(now);
     harpGain.setValueAtTime(harpGain.value, now);
 
-    if (target === 'IDLE') {
-      // Link stands still: lead brass/woodwinds soften to silence, harp swells, percussion softens
+    if (target === 'IDLE' || target === 'QUIET') {
+      // Rest mode: lead brass/woodwinds soften to silence, gentle pastoral harp swells, percussion muted
       if (melodyGain) melodyGain.linearRampToValueAtTime(0.0, now + fadeTime);
-      percGain.linearRampToValueAtTime(0.20, now + fadeTime);
-      harpGain.linearRampToValueAtTime(1.0, now + fadeTime);
-    } else if (target === 'QUIET') {
-      // Night / Rest mode
-      if (melodyGain) melodyGain.linearRampToValueAtTime(0.50, now + fadeTime);
       percGain.linearRampToValueAtTime(0.0, now + fadeTime);
       harpGain.linearRampToValueAtTime(1.0, now + fadeTime);
     } else {
-      // RUNNING / EXPLORATION: Link moves, lead melody soars, percussion drives
+      // Run mode: lead melody soars, percussion drives forward, harp muted
       if (melodyGain) melodyGain.linearRampToValueAtTime(1.0, now + fadeTime);
       percGain.linearRampToValueAtTime(1.0, now + fadeTime);
       harpGain.linearRampToValueAtTime(0.0, now + fadeTime);
@@ -1140,40 +1171,43 @@ export class HyruleSequencer {
    * Selects next block using fair shuffle bags (zero sequential repeats)
    */
   selectBlockForState(targetState = this.currentState) {
+    const avoid = this.upcomingBlock || this.currentBlock;
+
     if (targetState === 'BATTLE_INTRO') {
       if (this.currentBlock === blockMap.BATTLE_INTRO) {
-        return this.battleBag.next();
+        return this.battleBag.next(avoid);
       }
       return blockMap.BATTLE_INTRO;
     }
     if (targetState === 'BATTLE_OUTRO') {
       if (this.currentBlock === blockMap.BATTLE_OUTRO) {
-        return (this.postBattleState === 'QUIET') ? this.quietBag.next() : blockMap.EXPLORATION[6]; // Day 7 Triumphant Return Flourish
+        return (this.postBattleState === 'QUIET') ? this.quietBag.next(avoid) : blockMap.EXPLORATION[6]; // Running 7 Triumphant Return Flourish
       }
       return blockMap.BATTLE_OUTRO;
     }
     if (targetState === 'BATTLE') {
-      return this.battleBag.next();
+      return this.battleBag.next(avoid);
     }
-
 
     // Manual Mode Fallback
     if (targetState === 'QUIET') {
-      return this.quietBag.next();
+      return this.quietBag.next(avoid);
     }
 
-    // EXPLORATION:
+    // EXPLORATION (Run):
     if (this.currentBlock === blockMap.INTRO && targetState === 'EXPLORATION') {
-      return blockMap.EXPLORATION[0]; // Day 1 Main Theme
+      this.initialSequenceStage = 3;
+      this.explorationBag.setLastItem(blockMap.EXPLORATION[0]);
+      return blockMap.EXPLORATION[0]; // Running 1 Main Theme
     }
-    // If still in startup sequence, advance through Day 1
     if (this.initialSequenceStage === 2) {
       this.initialSequenceStage = 3;
-      return blockMap.EXPLORATION[0]; // Day 1
+      this.explorationBag.setLastItem(blockMap.EXPLORATION[0]);
+      return blockMap.EXPLORATION[0]; // Running 1 Main Theme
     }
 
-    // Ongoing exploration rotation: drawn fairly from shuffle bag
-    return this.explorationBag.next();
+    // Ongoing exploration rotation: drawn fairly from shuffle bag, strictly avoiding repeats
+    return this.explorationBag.next(avoid);
   }
 
   /**
@@ -1626,18 +1660,34 @@ export class HyruleSequencer {
           ? note.duration
           : Math.max(0.04, (note.durationTicks / (endTicks - startTicks)) * blockDurationSec);
 
-        // Strict adherence to note.name, note.midi, note.velocity (zero transpositions/alterations)
+        // Morning Dawn Ocarina & Bell doubling octave correction:
+        // In Bars 1–9, the MIDI transcription placed the Morning Dawn Ocarina (ch 11 / tr 25)
+        // and bell doubling (ch 12 / tr 26) an octave too high (up to G7 / 103), causing extreme
+        // high-frequency sample aliasing (dog whistle).
+        // Transposing down 1 octave (-12 semitones: A5–G6) restores the warm, authentic N64 sweet spot.
+        let playedNote = note;
+        if (chosenBlock === blockMap.MORNING && (track.channel === 11 || track.channel === 12 || trIdx === 25 || trIdx === 26)) {
+          const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+          const lowerMidi = note.midi - 12;
+          const lowerName = `${NOTE_NAMES[lowerMidi % 12]}${Math.floor(lowerMidi / 12) - 1}`;
+          playedNote = {
+            ...note,
+            midi: lowerMidi,
+            name: lowerName
+          };
+        }
+
         const eventId = transport.scheduleOnce((time) => {
-          this.triggerSafeNote(sampler, note, noteDurationSec, time);
+          this.triggerSafeNote(sampler, playedNote, noteDurationSec, time);
         }, noteTransportTime);
 
         eventIds.push({ id: eventId, time: noteTransportTime });
 
         // Add note to visualizer stream
         this.streamNotes.push({
-          name: note.name,
-          midi: note.midi,
-          velocity: note.velocity,
+          name: playedNote.name,
+          midi: playedNote.midi,
+          velocity: playedNote.velocity,
           transportTime: noteTransportTime,
           duration: Math.max(0.08, noteDurationSec),
           trackType: trackCategory,
@@ -1721,30 +1771,32 @@ export class HyruleSequencer {
         // Phrase 0 -> Phrase 1 (Heroic Intro Fanfare)
         nextBlock = blockMap.INTRO;
       } else if (this.currentBlock === blockMap.INTRO) {
-        // Phrase 1 -> Phrase 2 (Day 1 Main Theme)
+        // Phrase 1 -> Phrase 2 (Running 1 Main Theme)
         nextBlock = blockMap.EXPLORATION[0];
         this.currentState = 'EXPLORATION';
         this.currentModeBlocksRemaining = 1;
+        this.explorationBag.setLastItem(blockMap.EXPLORATION[0]);
+        this.initialSequenceStage = 3;
       } else if (this.currentBlock === blockMap.BATTLE_INTRO) {
         // Just entered battle -> queue battle skirmish
         this.currentState = 'BATTLE';
-        nextBlock = this.battleBag.next();
+        nextBlock = this.battleBag.next(this.currentBlock);
       } else if (this.currentState === 'BATTLE' && this.currentBlock !== blockMap.BATTLE_OUTRO) {
         // Combat skirmish completed -> queue victory fanfare
         nextBlock = blockMap.BATTLE_OUTRO;
         this.postBattleState = (Math.random() < 0.5) ? 'EXPLORATION' : 'QUIET';
       } else if (this.currentBlock === blockMap.BATTLE_OUTRO) {
-        // Victory fanfare completed -> resolve into postBattleState (Adventure or Rest)
+        // Victory fanfare completed -> resolve into postBattleState (Run or Rest)
         const target = this.postBattleState || 'EXPLORATION';
         this.postBattleState = null;
         this.currentState = target;
         this.currentModeBlocksRemaining = (Math.random() < 0.5 ? 1 : 2);
-        nextBlock = (target === 'QUIET') ? this.quietBag.next() : this.explorationBag.next();
+        nextBlock = (target === 'QUIET') ? this.quietBag.next(this.currentBlock) : this.explorationBag.next(this.currentBlock);
       } else {
-        // Active in EXPLORATION (Adventure) or QUIET (Rest)
+        // Active in EXPLORATION (Run) or QUIET (Rest)
         this.currentModeBlocksRemaining--;
         if (this.currentModeBlocksRemaining > 0) {
-          nextBlock = (this.currentState === 'QUIET') ? this.quietBag.next() : this.explorationBag.next();
+          nextBlock = (this.currentState === 'QUIET') ? this.quietBag.next(this.currentBlock) : this.explorationBag.next(this.currentBlock);
         } else {
           // Mode phrase complete: randomly cycle to one of the other modes!
           const candidateModes = (this.currentState === 'EXPLORATION')
@@ -1759,18 +1811,29 @@ export class HyruleSequencer {
             this.currentState = 'QUIET';
             this.pendingStateChange = 'QUIET';
             this.currentModeBlocksRemaining = (Math.random() < 0.5 ? 1 : 2);
-            nextBlock = this.quietBag.next();
+            nextBlock = this.quietBag.next(this.currentBlock);
           } else {
             this.currentState = 'EXPLORATION';
             this.pendingStateChange = 'EXPLORATION';
             this.currentModeBlocksRemaining = (Math.random() < 0.5 ? 1 : 2);
-            nextBlock = this.explorationBag.next();
+            nextBlock = this.explorationBag.next(this.currentBlock);
           }
         }
       }
     } else {
-      // Manual mode: continue selected mode endlessly
+      // Manual mode: continue selected mode endlessly, never repeating current block
       nextBlock = this.selectBlockForState(this.currentState);
+    }
+
+    // Safety guarantee: under no circumstances allow a block to repeat sequentially
+    if (nextBlock === this.currentBlock) {
+      if (this.currentState === 'QUIET') {
+        nextBlock = this.quietBag.next(this.currentBlock);
+      } else if (this.currentState === 'BATTLE') {
+        nextBlock = this.battleBag.next(this.currentBlock);
+      } else {
+        nextBlock = this.explorationBag.next(this.currentBlock);
+      }
     }
 
     this.upcomingBlock = nextBlock;

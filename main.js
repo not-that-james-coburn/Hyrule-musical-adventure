@@ -32,9 +32,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const startBtn = document.getElementById('start-btn');
   const startBtnLabel = document.getElementById('start-btn-label');
   const loadingIndicator = document.getElementById('loading-indicator');
+  const menuBtn = document.getElementById('menu-btn');
   const autoplayToggleBtn = document.getElementById('autoplay-toggle-btn');
   const modeButtons = document.querySelectorAll('.mode-btn');
-  const movementToggleBtn = document.getElementById('movement-toggle-btn');
   const canvas = document.getElementById('note-stream-canvas');
   const ctx = canvas ? canvas.getContext('2d') : null;
 
@@ -57,6 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const valVolume = document.getElementById('val-volume');
 
   let hasStarted = false;
+  let isMenuOpen = true;
   let lastSyncedMode = 'EXPLORATION';
 
   // 1. Audio Loading Lifecycle
@@ -93,18 +94,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Link Movement UI Updater
-  function updateMovementUi(state) {
-    if (!movementToggleBtn) return;
-    if (state === 'RUNNING') {
-      movementToggleBtn.className = 'link-toggle-btn running';
-      movementToggleBtn.innerText = 'Link: Running';
-    } else {
-      movementToggleBtn.className = 'link-toggle-btn resting';
-      movementToggleBtn.innerText = 'Link: Resting';
-    }
-  }
-
   // Autoplay UI Updater
   function updateAutoPlayUi(enabled) {
     if (autoplayToggleBtn) {
@@ -114,9 +103,59 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Menu Slide Overlay Functions (Pauses on open, resumes on close)
+  function openMenu() {
+    if (!hasStarted) return;
+    isMenuOpen = true;
+
+    // Pause audio transport
+    const transport = Tone.getTransport();
+    if (transport && transport.state === 'started') {
+      transport.pause();
+      if (loadingIndicator) {
+        loadingIndicator.innerText = "PAUSED";
+        loadingIndicator.className = "status-pill";
+      }
+    }
+
+    // Set button label to Resume
+    if (startBtnLabel) startBtnLabel.innerText = "Resume";
+
+    // Slide overlay back in place
+    if (playOverlay) {
+      playOverlay.classList.remove('slide-out');
+      playOverlay.classList.add('slide-in');
+    }
+  }
+
+  function closeMenu() {
+    if (!hasStarted) return;
+    isMenuOpen = false;
+
+    // Resume audio transport
+    const transport = Tone.getTransport();
+    if (transport && transport.state !== 'started') {
+      transport.start();
+      if (loadingIndicator) {
+        loadingIndicator.innerText = "PLAYING";
+        loadingIndicator.className = "status-pill ready";
+      }
+    }
+
+    // Slide overlay out of view
+    if (playOverlay) {
+      playOverlay.classList.remove('slide-in');
+      playOverlay.classList.add('slide-out');
+    }
+  }
+
   // Play / Pause internal logic (preserved for keyboard shortcuts & future features)
   function togglePlayPause() {
     if (!hasStarted) return;
+    if (isMenuOpen) {
+      closeMenu();
+      return;
+    }
     const transport = Tone.getTransport();
     if (transport.state === 'started') {
       transport.pause();
@@ -133,39 +172,52 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // 2. Play Button Overlay Tap
+  // 2. Play / Resume Button Overlay Tap
   if (startBtn) {
     startBtn.addEventListener('click', async () => {
-      if (startBtn.disabled || hasStarted) return;
-      hasStarted = true;
+      if (startBtn.disabled) return;
 
-      // Unlock AudioContext & start sequencer with runway lead-in
-      await Tone.start();
-      await changeGameMode('EXPLORATION');
+      if (!hasStarted) {
+        hasStarted = true;
+        isMenuOpen = false;
 
-      // Fade out overlay with smooth animation
-      if (playOverlay) {
-        playOverlay.classList.add('fade-out');
-        setTimeout(() => {
-          playOverlay.style.display = 'none';
-        }, 500);
-      }
+        // Unlock AudioContext & start sequencer with runway lead-in
+        await Tone.start();
+        await changeGameMode('EXPLORATION');
 
-      // Unlock controls
-      if (autoplayToggleBtn) autoplayToggleBtn.disabled = false;
-      modeButtons.forEach(btn => (btn.disabled = false));
-      if (movementToggleBtn) {
-        movementToggleBtn.disabled = false;
-        updateMovementUi(getLinkMovementState());
-      }
-      if (loadingIndicator) {
-        loadingIndicator.innerText = "PLAYING";
-        loadingIndicator.className = "status-pill ready";
+        // Slide overlay out of view
+        if (playOverlay) {
+          playOverlay.classList.add('slide-out');
+        }
+
+        // Unlock controls
+        if (autoplayToggleBtn) autoplayToggleBtn.disabled = false;
+        if (menuBtn) menuBtn.disabled = false;
+        modeButtons.forEach(btn => (btn.disabled = false));
+        if (loadingIndicator) {
+          loadingIndicator.innerText = "PLAYING";
+          loadingIndicator.className = "status-pill ready";
+        }
+      } else {
+        // Overlay was re-opened via MENU button; Resume was pressed
+        closeMenu();
       }
     });
   }
 
-  // 3. Mode Buttons Tap
+  // 3. Menu Button Tap
+  if (menuBtn) {
+    menuBtn.addEventListener('click', () => {
+      if (!hasStarted) return;
+      if (isMenuOpen) {
+        closeMenu();
+      } else {
+        openMenu();
+      }
+    });
+  }
+
+  // 4. Mode Buttons Tap (Run, Rest, Battle)
   modeButtons.forEach(btn => {
     btn.addEventListener('click', () => {
       if (!hasStarted) return;
@@ -174,15 +226,6 @@ document.addEventListener('DOMContentLoaded', () => {
       updateActiveModeUi(targetMode);
     });
   });
-
-  // 4. Link Movement Toggle Tap
-  if (movementToggleBtn) {
-    movementToggleBtn.addEventListener('click', () => {
-      if (!hasStarted) return;
-      const next = toggleLinkMovement();
-      updateMovementUi(next);
-    });
-  }
 
   // 5. Autoplay Toggle Tap (Off by default)
   if (autoplayToggleBtn) {
@@ -193,13 +236,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 6. Keyboard Shortcuts: Space for Play/Pause, 1/2/3 for Modes, L/M for Link Movement, A for Autoplay
+  // 6. Keyboard Shortcuts: Space for Play/Pause/Resume, M/ESC for Menu, 1/2/3 for Modes, A for Autoplay
   window.addEventListener('keydown', (e) => {
     if (!hasStarted) return;
     const key = e.key.toLowerCase();
     if (e.code === 'Space' || e.key === ' ') {
       e.preventDefault();
       togglePlayPause();
+    } else if (key === 'm' || e.key === 'Escape') {
+      if (isMenuOpen) {
+        closeMenu();
+      } else {
+        openMenu();
+      }
     } else if (e.key === '1') {
       changeGameMode('EXPLORATION');
       updateActiveModeUi('EXPLORATION');
@@ -209,9 +258,6 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (e.key === '3') {
       changeGameMode('BATTLE');
       updateActiveModeUi('BATTLE');
-    } else if (key === 'l' || key === 'm') {
-      const next = toggleLinkMovement();
-      updateMovementUi(next);
     } else if (key === 'a') {
       const enabled = toggleAutoPlay();
       updateAutoPlayUi(enabled);
