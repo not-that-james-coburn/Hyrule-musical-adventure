@@ -75,6 +75,20 @@ export const blockMap = {
       startBar: 57,
       endBar: 65,
       mode: 'EXPLORATION'
+    },
+    {
+      id: 'Day 7 (Bars 121–129)',
+      name: 'Triumphant Return Flourish',
+      startBar: 121,
+      endBar: 129,
+      mode: 'EXPLORATION'
+    },
+    {
+      id: 'Day 8 (Bars 129–137)',
+      name: 'Ocarina & Winds Interlude',
+      startBar: 129,
+      endBar: 137,
+      mode: 'EXPLORATION'
     }
   ],
 
@@ -225,13 +239,27 @@ export class HyruleSequencer {
     this.BARS_PER_BLOCK = BARS_PER_BLOCK;
     this.BLOCK_DURATION_SEC = BLOCK_DURATION_SEC; // 12.8s
 
-    // Dynamic Stem Gains
+    // Dynamic Stem Gains (Interactive Koji Kondo Arrangement Stems)
     this.gains = {
+      exploreMelody: new Tone.Gain(1),
       exploreCore: new Tone.Gain(1),
       explorePercussion: new Tone.Gain(1),
       idleHarp: new Tone.Gain(0),
       battleMusic: new Tone.Gain(0)
     };
+    this.linkMovementState = 'RUNNING'; // 'RUNNING' (active melody) or 'IDLE' (pastoral standing still)
+
+    // Dedicated Per-Channel Nodes (MIDI Channels 0–15)
+    this.channelGains = {};
+    this.channelReverbSends = {};
+    this.channelVibratos = {};
+    this.sfxBus = null;
+    this.sfxReverbSend = null;
+    this.reverbBus = null;
+    this.reverbEffect = null;
+    this.reverbReturnGain = null;
+    this.n64Filter = null;
+    this.masterEQ = null;
 
     this.midiData = null;
     this.manifest = null;
@@ -266,6 +294,13 @@ export class HyruleSequencer {
     // Stream notes buffer for continuous right-to-left visualizer
     this.streamNotes = [];
 
+    // Autonomous Day/Night Diurnal Cycle Engine
+    this.autoCycleEnabled = true;
+    this.cyclePhase = 'DAWN'; // 'DAWN', 'DAY', 'DUSK', 'NIGHT'
+    this.phaseBlockIndex = 0;
+    this.DAY_BLOCKS_TARGET = 5;   // 5 exploration blocks (~64s)
+    this.NIGHT_BLOCKS_TARGET = 4; // 4 quiet blocks (~51s)
+
     this.isInitialized = false;
     this.initPromise = null;
   }
@@ -279,19 +314,77 @@ export class HyruleSequencer {
       transport.bpm.value = this.BPM;
       transport.timeSignature = [4, 4];
 
-      // 1. Direct Output Pipeline: Master Limiter & Volume
-      // Clean, uncolored master chain adhering strictly to original composition audio
+      // 1. Direct Output Pipeline: Master Limiter, Volume, EQ & N64 RSP Reconstruction Filter
       this.masterLimiter = new Tone.Limiter(-0.5).toDestination();
       this.masterVolume = new Tone.Volume(-2.0).connect(this.masterLimiter);
-      this.masterPreBus = new Tone.Gain(1.0).connect(this.masterVolume);
+      this.masterEQ = new Tone.EQ3({ low: 0.5, mid: 0.0, high: 0.0 }).connect(this.masterVolume);
+
+      // Authentic N64 RSP Reconstruction Filter (gentle -12dB/oct rolloff at 13.5 kHz)
+      this.n64Filter = new Tone.Filter(13500, 'lowpass', -12).connect(this.masterEQ);
+      this.masterPreBus = new Tone.Gain(1.0).connect(this.n64Filter);
 
       // Connect localized stems directly into Master Pre-Bus
+      this.gains.exploreMelody.connect(this.masterPreBus);
       this.gains.exploreCore.connect(this.masterPreBus);
       this.gains.explorePercussion.connect(this.masterPreBus);
       this.gains.idleHarp.connect(this.masterPreBus);
       this.gains.battleMusic.connect(this.masterPreBus);
 
-      // 2. Load Assets (manifest + MIDI data)
+      // 2. Authentic N64 Schroeder/Moorer Comb-Filter Auxiliary Reverb Send Bus
+      this.reverbBus = new Tone.Gain(1.0);
+      this.reverbEffect = new Tone.Freeverb({
+        roomSize: 0.78,
+        dampening: 3500
+      });
+      this.reverbReturnGain = new Tone.Gain(0.65);
+      this.reverbBus.connect(this.reverbEffect);
+      this.reverbEffect.connect(this.reverbReturnGain);
+      this.reverbReturnGain.connect(this.masterPreBus);
+
+      // 3. Build dedicated Channel Gains and Reverb Send Nodes for MIDI Channels 0–15
+      for (let ch = 0; ch <= 15; ch++) {
+        this.channelGains[ch] = new Tone.Gain(1.0);
+        this.channelReverbSends[ch] = new Tone.Gain(0.0);
+
+        // Connect Channel Gain to Reverb Send (post-fader) and then to Reverb Bus
+        this.channelGains[ch].connect(this.channelReverbSends[ch]);
+        this.channelReverbSends[ch].connect(this.reverbBus);
+
+        // Connect Channel Gain to dynamic stems
+        if (ch === 9 || ch === 14) {
+          // Standard Kit percussion (Ch 9) & Timpani (Ch 14)
+          this.channelGains[ch].connect(this.gains.explorePercussion);
+          this.channelGains[ch].connect(this.gains.battleMusic);
+        } else if (ch === 6) {
+          // Orchestral Harp (Ch 6): active in Idle pastoral mode, Explore, and Battle
+          this.channelGains[ch].connect(this.gains.idleHarp);
+          this.channelGains[ch].connect(this.gains.exploreCore);
+          this.channelGains[ch].connect(this.gains.battleMusic);
+        } else if (ch === 0 || ch === 1 || ch === 2 || ch === 5 || ch === 11) {
+          // Lead Melody Channels: Trombone (0), Trumpet (1), Brass (2), Flute (5), Ocarina (11)
+          this.channelGains[ch].connect(this.gains.exploreMelody);
+          this.channelGains[ch].connect(this.gains.battleMusic);
+        } else {
+          // Accompaniment Channels: Strings (3, 13), Sax (4), Accordion (7), Bass (8), Marimba (10), Vibraphone (12), Contrabass (15)
+          this.channelGains[ch].connect(this.gains.exploreCore);
+          this.channelGains[ch].connect(this.gains.battleMusic);
+        }
+      }
+
+      // 4. Natural Vibrato LFO on Lead Solo Instruments (N64 Audioseq pitch modulation)
+      // Subtle 5.5 Hz vibrato with 0.14 depth (~18-20 cents) on Flute (Ch 5) & Ocarina (Ch 11)
+      this.channelVibratos[5] = new Tone.Vibrato({ frequency: 5.5, depth: 0.14, type: 'sine' });
+      this.channelVibratos[11] = new Tone.Vibrato({ frequency: 5.5, depth: 0.14, type: 'sine' });
+      this.channelVibratos[5].connect(this.channelGains[5]);
+      this.channelVibratos[11].connect(this.channelGains[11]);
+
+      // 5. Atmospheric Environmental SFX Bus with Authentic Schroeder Reverb
+      this.sfxBus = new Tone.Gain(1.0).connect(this.masterPreBus);
+      this.sfxReverbSend = new Tone.Gain(0.35);
+      this.sfxBus.connect(this.sfxReverbSend);
+      this.sfxReverbSend.connect(this.reverbBus);
+
+      // 4. Load Assets (manifest + MIDI data)
       await this.loadProjectAssets();
 
       // 3. Build SoundFont Rack & Instruments
@@ -408,16 +501,41 @@ export class HyruleSequencer {
       snare: { filter: k => k.startsWith('Snare'), defaultVol: -4.0 },
       hihat: { filter: k => k === 'Hi Hat' || k === 'Cymbal Hit', defaultVol: -6.5 },
       kick: { filter: k => k === 'Kick Drum' || k === 'Ethnic Kick', defaultVol: -3.0 },
-      tom: { filter: k => k.startsWith('Bent Drum') || k.startsWith('Ethnic Drum Kit') || k.startsWith('Timpani Low'), defaultVol: -4.0 }
+      tom: { filter: k => k.startsWith('Bent Drum') || k.startsWith('Ethnic Drum Kit') || k.startsWith('Timpani Low'), defaultVol: -4.0 },
+
+      // Atmospheric Environmental Sound Effects
+      wolfosHowl: { filter: k => k === 'Wolfos Howl', defaultVol: -2.0, isSfx: true },
+      towerBell: { filter: k => k === 'Tower Bell', defaultVol: -1.5, isSfx: true },
+      dangerSting: { filter: k => k === 'Danger Sting', defaultVol: -1.0, isSfx: true },
+      prairieWind: { filter: k => k === 'Prairie Wind', defaultVol: -6.0, isSfx: true }
+    };
+
+    const instToChannel = {
+      trombone: 0,
+      trumpet: 1,
+      brassSection: 2,
+      stringEnsemble: 3,
+      tenorSax: 4,
+      flute: 5,
+      harp: 6,
+      accordion: 7,
+      pickBass: 8,
+      kick: 9,
+      snare: 9,
+      hihat: 9,
+      tom: 9,
+      marimba: 10,
+      ocarina: 11,
+      vibraphone: 12,
+      stringEnsemble2: 13,
+      timpani: 14,
+      doubleBass: 15,
+      cello: 15,
+      piano: 0
     };
 
     const samplers = {};
     this.instGains = {};
-
-    for (const instKey of Object.keys(sampleSpecs)) {
-      this.instGains[instKey] = new Tone.Gain(1.0);
-    }
-    this.instGains.percussion = new Tone.Gain(1.0);
 
     for (const [instKey, spec] of Object.entries(sampleSpecs)) {
       const urls = this.buildSamplerUrls(spec.filter);
@@ -427,24 +545,29 @@ export class HyruleSequencer {
           sampler.volume.value = spec.defaultVol;
         }
 
-        // Route sampler into its dedicated instrument gain node
-        sampler.connect(this.instGains[instKey]);
+        // Route sampler into its dedicated MIDI channel gain node, vibrato node, or SFX bus
+        const targetChannel = instToChannel[instKey] ?? 0;
+        const targetChannelGain = this.channelGains[targetChannel];
+        const targetVibrato = this.channelVibratos ? this.channelVibratos[targetChannel] : null;
 
-        // Direct routing to dynamic stems without artificial filtering:
-        if (instKey === 'snare' || instKey === 'tom' || instKey === 'hihat' || instKey === 'kick') {
-          this.instGains[instKey].connect(this.gains.explorePercussion);
-          this.instGains[instKey].connect(this.gains.battleMusic);
-        } else if (instKey === 'harp') {
-          this.instGains[instKey].connect(this.gains.idleHarp);
-          this.instGains[instKey].connect(this.gains.exploreCore);
-          this.instGains[instKey].connect(this.gains.battleMusic);
+        if (spec.isSfx) {
+          sampler.connect(this.sfxBus || this.masterPreBus);
+          this.instGains[instKey] = this.sfxBus || this.masterPreBus;
+        } else if (targetVibrato && (instKey === 'ocarina' || instKey === 'flute')) {
+          sampler.connect(targetVibrato);
+          this.instGains[instKey] = targetChannelGain || new Tone.Gain(1.0);
+        } else if (targetChannelGain) {
+          sampler.connect(targetChannelGain);
+          this.instGains[instKey] = targetChannelGain;
         } else {
-          this.instGains[instKey].connect(this.gains.exploreCore);
-          this.instGains[instKey].connect(this.gains.battleMusic);
+          sampler.connect(this.masterPreBus);
+          this.instGains[instKey] = this.masterPreBus;
         }
+
         samplers[instKey] = sampler;
       }
     }
+    this.instGains.percussion = this.channelGains[9];
 
     function releaseAll() {
       Object.values(samplers).forEach(s => {
@@ -456,6 +579,8 @@ export class HyruleSequencer {
 
     return {
       samplers,
+      channelGains: this.channelGains,
+      channelReverbSends: this.channelReverbSends,
       instGains: this.instGains,
       releaseAll
     };
@@ -582,6 +707,118 @@ export class HyruleSequencer {
   }
 
   /**
+   * Calculates the exact audio second timestamp of the very next 4/4 measure downbeat.
+   * Ensures at least 150ms lookahead to protect against audio underrun glitches.
+   */
+  getNextMeasureDownbeatSec() {
+    const transport = Tone.getTransport();
+    const currentTransportSec = transport ? transport.seconds : 0;
+    const blockStart = this.currentBlockStartTransportSec;
+    const block = this.currentBlock;
+
+    if (!block || !this.midiData || !this.midiData.header) {
+      // Fallback: 150 BPM = 1.6s per bar
+      const barDur = (60 / this.BPM) * this.BEATS_PER_BAR; // 1.6s
+      const elapsed = Math.max(0, currentTransportSec - blockStart);
+      const nextBarIdx = Math.floor(elapsed / barDur) + 1;
+      let targetTime = blockStart + nextBarIdx * barDur;
+      if (targetTime - currentTransportSec < 0.15) {
+        targetTime += barDur;
+      }
+      return targetTime;
+    }
+
+    const ticksPerBar = 4 * this.PPQ;
+    const blockStartMidiSec = this.ticksToTime(block.startBar * ticksPerBar);
+    const totalBars = block.endBar - block.startBar; // 8 bars
+
+    for (let b = 1; b <= totalBars; b++) {
+      const barTicks = (block.startBar + b) * ticksPerBar;
+      const barMidiSec = this.ticksToTime(barTicks);
+      const barRelSec = barMidiSec - blockStartMidiSec;
+      const barAbsTransportSec = blockStart + barRelSec;
+
+      // Ensure at least 150ms lookahead to schedule audio cleanly without underrun
+      if (barAbsTransportSec - currentTransportSec >= 0.15) {
+        return barAbsTransportSec;
+      }
+    }
+
+    // If already at or past the last measure, return block completion time
+    return blockStart + (this.currentBlockDurationSec || this.BLOCK_DURATION_SEC);
+  }
+
+  /**
+   * Fast 1-Measure Combat Interrupt:
+   * Interrupts the active sequence precisely at the next measure downbeat boundary (1 bar),
+   * releasing held exploration notes, fading stems, and launching the target battle or victory cue.
+   */
+  executeMeasureInterrupt(targetBlock, targetState) {
+    const transport = Tone.getTransport();
+    const interruptTime = this.getNextMeasureDownbeatSec();
+
+    // 1. Cancel remaining events of current phrase starting from interrupt downbeat
+    this.clearPhraseEvents(this.phraseIndex, interruptTime);
+
+    // 2. Cancel pre-queued upcoming phrase events
+    const upcomingPhraseIdx = this.phraseIndex + 1;
+    this.clearPhraseEvents(upcomingPhraseIdx, 0);
+
+    // 3. Clear future visualizer notes from the interrupt point onward
+    this.streamNotes = this.streamNotes.filter(n => n.transportTime < interruptTime);
+
+    // 4. Cancel pending 8-bar phrase boundary clock timer
+    if (this.boundaryEventId !== null) {
+      try { transport.clear(this.boundaryEventId); } catch (e) {}
+      this.boundaryEventId = null;
+    }
+
+    // 5. Schedule release of sounding notes and mode crossfade right on the measure downbeat
+    this.pendingStateChange = targetState;
+    transport.scheduleOnce((time) => {
+      if (this.soundRack && typeof this.soundRack.releaseAll === 'function') {
+        try { this.soundRack.releaseAll(); } catch (e) {}
+      }
+      this.handleDeferredTransitions(time);
+    }, interruptTime);
+
+    // 6. Advance phrase index and activate the interrupted cue
+    this.phraseIndex++;
+    const activePhraseIdx = this.phraseIndex;
+    const blockDurSec = this.getBlockDuration(targetBlock);
+
+    this.currentBlock = targetBlock;
+    this.currentBlockStartTransportSec = interruptTime;
+    this.currentBlockDurationSec = blockDurSec;
+    currentBlockStartTransportSec = interruptTime;
+    currentBlockDurationSec = blockDurSec;
+
+    // Immediately update state so subsequent lookahead uses the correct mode
+    if (targetBlock === blockMap.BATTLE_INTRO) {
+      this.currentState = 'BATTLE';
+    } else if (targetBlock === blockMap.BATTLE_OUTRO) {
+      this.currentState = this.postBattleState || 'EXPLORATION';
+    }
+
+    // Schedule all notes for the new block starting precisely on the measure downbeat
+    this.scheduleNotesForBlock(targetBlock, activePhraseIdx, interruptTime);
+
+    // 7. Schedule next phrase boundary timer for the conclusion of this block
+    const nextStartTransportSec = interruptTime + blockDurSec;
+    this.upcomingBlockStartSec = nextStartTransportSec;
+
+    this.boundaryEventId = transport.scheduleOnce((time) => {
+      this.onPhraseBoundary(time);
+    }, nextStartTransportSec);
+
+    // 8. Pre-queue next block for lookahead
+    const nextPhraseIdx = activePhraseIdx + 1;
+    const nextBlock = this.selectBlockForState(this.currentState);
+    this.upcomingBlock = nextBlock;
+    this.scheduleNotesForBlock(nextBlock, nextPhraseIdx, nextStartTransportSec);
+  }
+
+  /**
    * Set musical mode. Supports 'EXPLORATION', 'QUIET', 'BATTLE'.
    */
   setState(newState) {
@@ -589,38 +826,53 @@ export class HyruleSequencer {
 
     const inCombat = (this.currentState === 'BATTLE' || this.currentState === 'BATTLE_INTRO' || this.currentBlock === blockMap.BATTLE_INTRO);
 
-    if (newState === 'QUIET' && this.currentState === 'EXPLORATION') {
-      // Immediate volume crossfade mid-bar
+    if (newState === 'BATTLE') {
+      if (!inCombat) {
+        // Fast 1-Measure Combat Interrupt: Enemy spotted! Danger sting strikes immediately
+        this.playDangerSting(Tone.now());
+        this.executeMeasureInterrupt(blockMap.BATTLE_INTRO, 'BATTLE');
+      }
+    } else if (newState === 'EXPLORATION' && inCombat) {
+      // Fast 1-Measure Combat Resolution: Enemy defeated! Burst into Victory on next measure downbeat
+      this.postBattleState = 'EXPLORATION';
+      this.executeMeasureInterrupt(blockMap.BATTLE_OUTRO, 'EXPLORATION');
+    } else if (newState === 'QUIET' && inCombat) {
+      // Rest mode selected during Battle: Play Victory on next measure downbeat, then settle into Quiet
+      this.postBattleState = 'QUIET';
+      this.executeMeasureInterrupt(blockMap.BATTLE_OUTRO, 'QUIET');
+    } else if (newState === 'QUIET' && this.currentState === 'EXPLORATION') {
+      // Immediate volume crossfade mid-bar: Castle gate bell tolls, followed by wolf howling across Hyrule
+      this.cyclePhase = 'NIGHT';
+      this.phaseBlockIndex = 0;
+      const now = Tone.now();
+      this.playTowerBell(now + 0.05);
+      this.playTowerBell(now + 1.6);
+      this.playWolfosHowl(now + 2.8);
       this.executeMovementCrossfade('QUIET');
       this.currentState = 'QUIET';
       this.pendingStateChange = 'QUIET';
       this.requeueUpcomingPhrase('QUIET');
     } else if (newState === 'EXPLORATION' && this.currentState === 'QUIET') {
       // Immediate volume crossfade mid-bar: percussion resumes immediately
+      this.cyclePhase = 'DAY';
+      this.phaseBlockIndex = 0;
       this.executeMovementCrossfade('EXPLORATION');
       this.currentState = 'EXPLORATION';
       this.pendingStateChange = 'EXPLORATION';
       this.requeueUpcomingPhrase('EXPLORATION');
-    } else if (newState === 'BATTLE') {
-      this.pendingStateChange = 'BATTLE';
-      this.requeueUpcomingPhrase('BATTLE_INTRO');
-    } else if (newState === 'EXPLORATION' && inCombat) {
-      // Victory flourish before resolving to exploration
-      this.pendingStateChange = 'EXPLORATION';
-      this.postBattleState = 'EXPLORATION';
-      this.requeueUpcomingPhrase('BATTLE_OUTRO');
-    } else if (newState === 'QUIET' && inCombat) {
-      // Rest mode selected during Battle:
-      // Play Victory fanfare to triumphantly conclude combat, then seamlessly settle into Quiet!
-      this.pendingStateChange = 'QUIET';
-      this.postBattleState = 'QUIET';
-      this.requeueUpcomingPhrase('BATTLE_OUTRO');
     } else if (newState === 'EXPLORATION') {
+      this.cyclePhase = 'DAY';
+      this.phaseBlockIndex = 0;
       this.executeMovementCrossfade('EXPLORATION');
       this.currentState = 'EXPLORATION';
       this.pendingStateChange = 'EXPLORATION';
       this.requeueUpcomingPhrase('EXPLORATION');
     } else if (newState === 'QUIET') {
+      this.cyclePhase = 'NIGHT';
+      this.phaseBlockIndex = 0;
+      const now = Tone.now();
+      this.playTowerBell(now + 0.05);
+      this.playWolfosHowl(now + 2.0);
       this.executeMovementCrossfade('QUIET');
       this.currentState = 'QUIET';
       this.pendingStateChange = 'QUIET';
@@ -629,28 +881,58 @@ export class HyruleSequencer {
   }
 
   /**
-   * Mid-bar linear volume crossfade for quiet/idle vs active exploration
+   * Mid-bar real-time volume crossfade for Link movement (Running vs Standing Still) and quiet/idle mode
    */
-  executeMovementCrossfade(target = this.currentState) {
+  executeMovementCrossfade(target = this.linkMovementState) {
     const now = Tone.now();
-    const fadeTime = 0.35; // 350ms smooth real-time crossfade
+    const fadeTime = 0.40; // 400ms smooth real-time crossfade
 
+    const melodyGain = this.gains.exploreMelody ? this.gains.exploreMelody.gain : null;
     const percGain = this.gains.explorePercussion.gain;
     const harpGain = this.gains.idleHarp.gain;
 
+    if (melodyGain) {
+      melodyGain.cancelScheduledValues(now);
+      melodyGain.setValueAtTime(melodyGain.value, now);
+    }
     percGain.cancelScheduledValues(now);
     percGain.setValueAtTime(percGain.value, now);
-
     harpGain.cancelScheduledValues(now);
     harpGain.setValueAtTime(harpGain.value, now);
 
-    if (target === 'IDLE' || target === 'QUIET') {
-      percGain.linearRampToValueAtTime(0, now + fadeTime);
-      harpGain.linearRampToValueAtTime(1, now + fadeTime);
-    } else if (target === 'EXPLORATION') {
-      percGain.linearRampToValueAtTime(1, now + fadeTime);
-      harpGain.linearRampToValueAtTime(0, now + fadeTime);
+    if (target === 'IDLE') {
+      // Link stands still: lead brass/woodwinds soften to silence, harp swells, percussion softens
+      if (melodyGain) melodyGain.linearRampToValueAtTime(0.0, now + fadeTime);
+      percGain.linearRampToValueAtTime(0.20, now + fadeTime);
+      harpGain.linearRampToValueAtTime(1.0, now + fadeTime);
+    } else if (target === 'QUIET') {
+      // Night / Rest mode
+      if (melodyGain) melodyGain.linearRampToValueAtTime(0.50, now + fadeTime);
+      percGain.linearRampToValueAtTime(0.0, now + fadeTime);
+      harpGain.linearRampToValueAtTime(1.0, now + fadeTime);
+    } else {
+      // RUNNING / EXPLORATION: Link moves, lead melody soars, percussion drives
+      if (melodyGain) melodyGain.linearRampToValueAtTime(1.0, now + fadeTime);
+      percGain.linearRampToValueAtTime(1.0, now + fadeTime);
+      harpGain.linearRampToValueAtTime(0.0, now + fadeTime);
     }
+  }
+
+  setLinkMovement(state) {
+    if (state !== 'RUNNING' && state !== 'IDLE') return;
+    this.linkMovementState = state;
+    if (this.currentState === 'EXPLORATION') {
+      this.executeMovementCrossfade(state);
+      if (state === 'IDLE') {
+        this.playPrairieWind(Tone.now() + 0.15);
+      }
+    }
+  }
+
+  toggleLinkMovement() {
+    const next = (this.linkMovementState === 'RUNNING') ? 'IDLE' : 'RUNNING';
+    this.setLinkMovement(next);
+    return next;
   }
 
   /**
@@ -662,6 +944,10 @@ export class HyruleSequencer {
     if (this.pendingStateChange) {
       if (this.pendingStateChange === 'BATTLE') {
         // Mute exploration layer nodes on downbeat
+        if (this.gains.exploreMelody) {
+          this.gains.exploreMelody.gain.setValueAtTime(this.gains.exploreMelody.gain.value, timelineTime);
+          this.gains.exploreMelody.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
+        }
         this.gains.exploreCore.gain.setValueAtTime(this.gains.exploreCore.gain.value, timelineTime);
         this.gains.exploreCore.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
         this.gains.explorePercussion.gain.setValueAtTime(this.gains.explorePercussion.gain.value, timelineTime);
@@ -684,12 +970,17 @@ export class HyruleSequencer {
           this.gains.battleMusic.gain.setValueAtTime(this.gains.battleMusic.gain.value, timelineTime);
           this.gains.battleMusic.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
 
+          const isIdle = (this.linkMovementState === 'IDLE');
+          if (this.gains.exploreMelody) {
+            this.gains.exploreMelody.gain.setValueAtTime(this.gains.exploreMelody.gain.value, timelineTime);
+            this.gains.exploreMelody.gain.linearRampToValueAtTime(isIdle ? 0 : 1, timelineTime + fadeTime);
+          }
           this.gains.exploreCore.gain.setValueAtTime(this.gains.exploreCore.gain.value, timelineTime);
-          this.gains.exploreCore.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
+          this.gains.exploreCore.gain.linearRampToValueAtTime(isIdle ? 0.85 : 1, timelineTime + fadeTime);
           this.gains.explorePercussion.gain.setValueAtTime(this.gains.explorePercussion.gain.value, timelineTime);
-          this.gains.explorePercussion.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
+          this.gains.explorePercussion.gain.linearRampToValueAtTime(isIdle ? 0.20 : 1, timelineTime + fadeTime);
           this.gains.idleHarp.gain.setValueAtTime(this.gains.idleHarp.gain.value, timelineTime);
-          this.gains.idleHarp.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
+          this.gains.idleHarp.gain.linearRampToValueAtTime(isIdle ? 1 : 0, timelineTime + fadeTime);
 
           this.currentState = 'EXPLORATION';
           this.pendingStateChange = null;
@@ -703,6 +994,10 @@ export class HyruleSequencer {
           this.gains.battleMusic.gain.setValueAtTime(this.gains.battleMusic.gain.value, timelineTime);
           this.gains.battleMusic.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
 
+          if (this.gains.exploreMelody) {
+            this.gains.exploreMelody.gain.setValueAtTime(this.gains.exploreMelody.gain.value, timelineTime);
+            this.gains.exploreMelody.gain.linearRampToValueAtTime(0.50, timelineTime + fadeTime);
+          }
           this.gains.explorePercussion.gain.setValueAtTime(this.gains.explorePercussion.gain.value, timelineTime);
           this.gains.explorePercussion.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
           this.gains.idleHarp.gain.setValueAtTime(this.gains.idleHarp.gain.value, timelineTime);
@@ -724,20 +1019,31 @@ export class HyruleSequencer {
         this.gains.battleMusic.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
 
         if (target === 'QUIET') {
+          if (this.gains.exploreMelody) {
+            this.gains.exploreMelody.gain.setValueAtTime(this.gains.exploreMelody.gain.value, timelineTime);
+            this.gains.exploreMelody.gain.linearRampToValueAtTime(0.50, timelineTime + fadeTime);
+          }
           this.gains.exploreCore.gain.setValueAtTime(this.gains.exploreCore.gain.value, timelineTime);
           this.gains.exploreCore.gain.linearRampToValueAtTime(0.8, timelineTime + fadeTime);
           this.gains.explorePercussion.gain.setValueAtTime(this.gains.explorePercussion.gain.value, timelineTime);
           this.gains.explorePercussion.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
           this.gains.idleHarp.gain.setValueAtTime(this.gains.idleHarp.gain.value, timelineTime);
           this.gains.idleHarp.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
+          this.playTowerBell(timelineTime + 0.1);
+          this.playWolfosHowl(timelineTime + 2.2);
           this.currentState = 'QUIET';
         } else {
+          const isIdle = (this.linkMovementState === 'IDLE');
+          if (this.gains.exploreMelody) {
+            this.gains.exploreMelody.gain.setValueAtTime(this.gains.exploreMelody.gain.value, timelineTime);
+            this.gains.exploreMelody.gain.linearRampToValueAtTime(isIdle ? 0 : 1, timelineTime + fadeTime);
+          }
           this.gains.exploreCore.gain.setValueAtTime(this.gains.exploreCore.gain.value, timelineTime);
-          this.gains.exploreCore.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
+          this.gains.exploreCore.gain.linearRampToValueAtTime(isIdle ? 0.85 : 1, timelineTime + fadeTime);
           this.gains.explorePercussion.gain.setValueAtTime(this.gains.explorePercussion.gain.value, timelineTime);
-          this.gains.explorePercussion.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
+          this.gains.explorePercussion.gain.linearRampToValueAtTime(isIdle ? 0.20 : 1, timelineTime + fadeTime);
           this.gains.idleHarp.gain.setValueAtTime(this.gains.idleHarp.gain.value, timelineTime);
-          this.gains.idleHarp.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
+          this.gains.idleHarp.gain.linearRampToValueAtTime(isIdle ? 1 : 0, timelineTime + fadeTime);
           this.currentState = 'EXPLORATION';
         }
       }
@@ -756,13 +1062,43 @@ export class HyruleSequencer {
     }
     if (targetState === 'BATTLE_OUTRO') {
       if (this.currentBlock === blockMap.BATTLE_OUTRO) {
-        return (this.postBattleState === 'QUIET') ? this.quietBag.next() : this.explorationBag.next();
+        return (this.postBattleState === 'QUIET') ? this.quietBag.next() : blockMap.EXPLORATION[6]; // Day 7 Triumphant Return Flourish
       }
       return blockMap.BATTLE_OUTRO;
     }
     if (targetState === 'BATTLE') {
       return this.battleBag.next();
     }
+
+    // Autonomous Day/Night Diurnal Cycle Selection Logic
+    if (this.autoCycleEnabled && targetState !== 'BATTLE' && targetState !== 'BATTLE_INTRO' && targetState !== 'BATTLE_OUTRO') {
+      if (this.cyclePhase === 'DAWN') {
+        if (this.currentBlock === blockMap.MORNING) {
+          return blockMap.INTRO; // Phrase 1: Intro Fanfare (Bars 9–17)
+        }
+        if (this.currentBlock === blockMap.INTRO) {
+          return blockMap.EXPLORATION[0]; // Day 1 Main Theme A (Bars 17–25)
+        }
+      }
+
+      if (this.cyclePhase === 'DAY') {
+        // If playing final daytime block, pre-queue first Night block
+        if (this.phaseBlockIndex >= this.DAY_BLOCKS_TARGET - 1) {
+          return this.quietBag.next();
+        }
+        return this.explorationBag.next();
+      }
+
+      if (this.cyclePhase === 'NIGHT') {
+        // If playing final nighttime block, pre-queue Morning Sunrise block
+        if (this.phaseBlockIndex >= this.NIGHT_BLOCKS_TARGET - 1) {
+          return blockMap.MORNING; // Sunrise Dawn Ocarina (Bars 1–9)
+        }
+        return this.quietBag.next();
+      }
+    }
+
+    // Manual Mode Fallback
     if (targetState === 'QUIET') {
       return this.quietBag.next();
     }
@@ -818,15 +1154,29 @@ export class HyruleSequencer {
     return { startTicks, endTicks, startTimeSec, endTimeSec, durationSec };
   }
 
-  clearPhraseEvents(phraseIdx) {
-    if (this.phraseEventIds[phraseIdx]) {
-      const transport = Tone.getTransport();
-      this.phraseEventIds[phraseIdx].forEach(id => {
+  clearPhraseEvents(phraseIdx, minTime = 0) {
+    if (!this.phraseEventIds[phraseIdx]) return;
+    const transport = Tone.getTransport();
+    if (minTime <= 0) {
+      this.phraseEventIds[phraseIdx].forEach(ev => {
         try {
+          const id = (typeof ev === 'object' && ev !== null) ? ev.id : ev;
           transport.clear(id);
         } catch (e) {}
       });
       delete this.phraseEventIds[phraseIdx];
+    } else {
+      const kept = [];
+      this.phraseEventIds[phraseIdx].forEach(ev => {
+        const id = (typeof ev === 'object' && ev !== null) ? ev.id : ev;
+        const time = (typeof ev === 'object' && ev !== null) ? ev.time : 0;
+        if (time >= minTime) {
+          try { transport.clear(id); } catch (e) {}
+        } else {
+          kept.push(ev);
+        }
+      });
+      this.phraseEventIds[phraseIdx] = kept;
     }
   }
 
@@ -866,38 +1216,84 @@ export class HyruleSequencer {
     const transport = Tone.getTransport();
 
     // -------------------------------------------------------------------------
-    // 1. Parse & Inject MIDI JSON CC#7 (Volume) & CC#11 (Expression) Automation Curves
+    // 1. Parse & Inject MIDI JSON CC#7 (Volume), CC#11 (Expression) & CC#91 (Reverb) per Channel (0–15)
     // -------------------------------------------------------------------------
-    const processedInstGains = new Set();
+    const defaultReverbSends = {
+      0: 0.47,  // Trombone (hall)
+      1: 0.47,  // Trumpet (hall)
+      2: 0.45,  // Brass Section (hall)
+      3: 0.39,  // String Ensemble 1 (ambient strings)
+      4: 0.35,  // Tenor Sax (reeds)
+      5: 0.50,  // Flute (woodwind resonance)
+      6: 0.79,  // Harp (spacious Sheik's harp)
+      7: 0.35,  // Accordion (pastoral)
+      8: 0.00,  // Bass (tight & dry)
+      9: 0.00,  // Standard Drum Kit (punchy & dry)
+      10: 0.30, // Marimba
+      11: 0.71, // Ocarina (ethereal open plains echo)
+      12: 0.45, // Vibraphone
+      13: 0.39, // String Ensemble 2
+      14: 0.20, // Timpani (subtle room)
+      15: 0.00  // Contrabass (dry low end)
+    };
 
-    this.midiData.tracks.forEach((track, trIdx) => {
-      const instKey = this.getInstrumentKeyForTrack(trIdx);
-      const gainNode = this.instGains ? this.instGains[instKey] : null;
-      if (!gainNode) return;
+    for (let ch = 0; ch <= 15; ch++) {
+      const channelGain = this.channelGains ? this.channelGains[ch] : null;
+      const reverbSend = this.channelReverbSends ? this.channelReverbSends[ch] : null;
+      if (!channelGain || !reverbSend) continue;
+
+      const chTracks = this.midiData.tracks.filter(t => t.channel === ch);
+      if (chTracks.length === 0) continue;
 
       // Extract CC#7 base volume (normalized 0.0 to 1.0)
       let baseCc7 = 1.0;
-      if (track.controlChanges && track.controlChanges['7'] && track.controlChanges['7'].length > 0) {
-        const raw7 = track.controlChanges['7'][0].value;
-        baseCc7 = (raw7 > 1) ? (raw7 / 127) : raw7;
-      }
+      let foundCc7 = false;
+      let targetCc91 = (typeof defaultReverbSends[ch] === 'number') ? defaultReverbSends[ch] : 0.40;
 
-      // Filter CC#11 Expression events occurring within this 8-bar block
-      const blockCc11 = (track.controlChanges && track.controlChanges['11'])
-        ? track.controlChanges['11'].filter(e => e.ticks >= startTicks && e.ticks < endTicks)
-        : [];
+      chTracks.forEach(t => {
+        if (t.controlChanges) {
+          if (!foundCc7 && t.controlChanges['7'] && t.controlChanges['7'].length > 0) {
+            const raw7 = t.controlChanges['7'][0].value;
+            baseCc7 = (raw7 > 1) ? (raw7 / 127) : raw7;
+            foundCc7 = true;
+          }
+          if (t.controlChanges['91'] && t.controlChanges['91'].length > 0) {
+            const raw91 = t.controlChanges['91'][0].value;
+            targetCc91 = (raw91 > 1) ? (raw91 / 127) : raw91;
+          }
+        }
+      });
+
+      // Schedule CC#91 Reverb Send for this channel at block start
+      const evReverb = transport.scheduleOnce((time) => {
+        reverbSend.gain.setValueAtTime(targetCc91, time);
+      }, startTransportSec);
+      eventIds.push({ id: evReverb, time: startTransportSec });
+
+      // Collect all CC#11 Expression events on this channel within this 8-bar block
+      const blockCc11 = [];
+      chTracks.forEach(t => {
+        if (t.controlChanges && t.controlChanges['11']) {
+          t.controlChanges['11'].forEach(e => {
+            if (e.ticks >= startTicks && e.ticks < endTicks) {
+              blockCc11.push(e);
+            }
+          });
+        }
+      });
+
+      blockCc11.sort((a, b) => a.ticks - b.ticks);
 
       if (blockCc11.length > 0) {
-        processedInstGains.add(instKey);
         const firstCcRelSec = Math.max(0, blockCc11[0].time - blockStartMidiSec);
         if (firstCcRelSec > 0.02) {
           const firstRaw = blockCc11[0].value;
           const firstVal = (firstRaw > 1) ? (firstRaw / 127) : firstRaw;
           const initGain = baseCc7 * firstVal;
           const evId = transport.scheduleOnce((time) => {
-            gainNode.gain.setValueAtTime(initGain, time);
+            channelGain.gain.setValueAtTime(initGain, time);
           }, startTransportSec);
-          eventIds.push(evId);
+          eventIds.push({ id: evId, time: startTransportSec });
         }
 
         blockCc11.forEach(ccEvent => {
@@ -908,19 +1304,18 @@ export class HyruleSequencer {
           const targetGain = baseCc7 * exprVal;
 
           const evId = transport.scheduleOnce((time) => {
-            gainNode.gain.setValueAtTime(targetGain, time);
+            channelGain.gain.setValueAtTime(targetGain, time);
           }, ccTransportTime);
-          eventIds.push(evId);
+          eventIds.push({ id: evId, time: ccTransportTime });
         });
-      } else if (!processedInstGains.has(instKey)) {
-        processedInstGains.add(instKey);
+      } else {
         // Reset gain to baseline CC#7 volume at block boundary
         const evId = transport.scheduleOnce((time) => {
-          gainNode.gain.setValueAtTime(baseCc7, time);
+          channelGain.gain.setValueAtTime(baseCc7, time);
         }, startTransportSec);
-        eventIds.push(evId);
+        eventIds.push({ id: evId, time: startTransportSec });
       }
-    });
+    }
 
     // -------------------------------------------------------------------------
     // 2. Schedule Note Events strictly adhering to MIDI parameters
@@ -946,7 +1341,7 @@ export class HyruleSequencer {
           this.triggerSafeNote(sampler, note, noteDurationSec, time);
         }, noteTransportTime);
 
-        eventIds.push(eventId);
+        eventIds.push({ id: eventId, time: noteTransportTime });
 
         // Add note to visualizer stream
         this.streamNotes.push({
@@ -1021,6 +1416,46 @@ export class HyruleSequencer {
       this.currentState = this.postBattleState || 'EXPLORATION';
     }
 
+    // Advance Autonomous Day/Night Diurnal Cycle phase & trigger environmental transitions
+    if (this.autoCycleEnabled && this.currentState !== 'BATTLE' && this.currentState !== 'BATTLE_INTRO') {
+      const isMorning = (this.currentBlock === blockMap.MORNING);
+      const isIntro = (this.currentBlock === blockMap.INTRO);
+      const isQuietBlock = blockMap.QUIET.some(b => b.id === this.currentBlock.id);
+      const isExploreBlock = blockMap.EXPLORATION.some(b => b.id === this.currentBlock.id);
+
+      if (isMorning) {
+        this.cyclePhase = 'DAWN';
+        this.phaseBlockIndex = 0;
+        this.currentState = 'EXPLORATION';
+        this.executeMovementCrossfade('EXPLORATION');
+      } else if (isIntro) {
+        this.cyclePhase = 'DAWN';
+        this.phaseBlockIndex = 1;
+      } else if (isQuietBlock) {
+        if (this.cyclePhase !== 'NIGHT') {
+          // Sunset / Dusk arrival: toll Castle Town drawbridge bell twice and wolf howl!
+          this.cyclePhase = 'NIGHT';
+          this.phaseBlockIndex = 0;
+          this.currentState = 'QUIET';
+          this.playTowerBell(audioTime + 0.05);
+          this.playTowerBell(audioTime + 1.6);
+          this.playWolfosHowl(audioTime + 2.8);
+          this.executeMovementCrossfade('QUIET');
+        } else {
+          this.phaseBlockIndex++;
+        }
+      } else if (isExploreBlock) {
+        if (this.cyclePhase !== 'DAY') {
+          this.cyclePhase = 'DAY';
+          this.phaseBlockIndex = 0;
+          this.currentState = 'EXPLORATION';
+          this.executeMovementCrossfade('EXPLORATION');
+        } else {
+          this.phaseBlockIndex++;
+        }
+      }
+    }
+
     // 3. Pre-queue the NEXT upcoming block ahead of time (1 block lookahead)
     const nextPhraseIdx = this.phraseIndex + 1;
     const nextStartTransportSec = startTransportSec + blockDurSec;
@@ -1060,10 +1495,12 @@ export class HyruleSequencer {
       this.streamNotes = [];
       this.phraseEventIds = {};
 
-      // Reset shuffle bags
+      // Reset shuffle bags & diurnal cycle
       this.explorationBag.reset();
       this.battleBag.reset();
       this.quietBag.reset();
+      this.cyclePhase = 'DAWN';
+      this.phaseBlockIndex = 0;
 
       // Startup Sequence:
       // Phrase 0: Morning Sunrise cue (Bars 1–9) with authentic rubato tempo variations (16.867s)
@@ -1109,6 +1546,20 @@ export class HyruleSequencer {
     if (this.soundRack && typeof this.soundRack.releaseAll === 'function') {
       this.soundRack.releaseAll();
     }
+    const now = Tone.now();
+    for (let ch = 0; ch <= 15; ch++) {
+      if (this.channelGains[ch]) {
+        try {
+          this.channelGains[ch].gain.cancelScheduledValues(now);
+          this.channelGains[ch].gain.setValueAtTime(1.0, now);
+        } catch (e) {}
+      }
+      if (this.channelReverbSends[ch]) {
+        try {
+          this.channelReverbSends[ch].gain.cancelScheduledValues(now);
+        } catch (e) {}
+      }
+    }
   }
 
   // --- Real-time Interactive Mixer Controls ---
@@ -1120,27 +1571,191 @@ export class HyruleSequencer {
   }
 
   setMasterWarmth(cutoffHz) {
-    // Artificial tone coloration removed per user instruction
+    if (this.n64Filter) {
+      this.n64Filter.frequency.value = Math.max(4000, Math.min(20000, cutoffHz));
+    }
   }
 
   setMasterTreble(trebleDb) {
-    // Artificial EQ coloration removed per user instruction
+    if (this.masterEQ) {
+      this.masterEQ.high.value = Math.max(-14, Math.min(6, trebleDb));
+    }
   }
 
   setMasterReverbWet(wetRatio) {
-    // Artificial reverb coloration removed per user instruction
+    if (this.reverbReturnGain) {
+      this.reverbReturnGain.gain.value = Math.max(0, Math.min(1.5, wetRatio * 1.1));
+    }
   }
 
   setMixerPreset(presetName) {
-    // Artificial tone enhancement presets removed per user instruction
+    switch (presetName) {
+      case 'n64': // Authentic N64 RSP Warmth (Default & Recommended)
+        this.setMasterWarmth(13500);
+        this.setMasterTreble(0.0);
+        this.setMasterReverbWet(0.60);
+        this.setMasterVolume(-2.0);
+        if (this.masterEQ) {
+          this.masterEQ.low.value = 0.5;
+          this.masterEQ.mid.value = 0.0;
+        }
+        break;
+      case 'hall': // Concert Hall
+        this.setMasterWarmth(15000);
+        this.setMasterTreble(1.5);
+        this.setMasterReverbWet(0.85);
+        this.setMasterVolume(-2.5);
+        if (this.masterEQ) {
+          this.masterEQ.low.value = 1.0;
+          this.masterEQ.mid.value = -0.5;
+        }
+        break;
+      case 'retro': // Vintage CRT / TV Speaker Warmth
+        this.setMasterWarmth(9500);
+        this.setMasterTreble(-3.0);
+        this.setMasterReverbWet(0.40);
+        this.setMasterVolume(-2.0);
+        if (this.masterEQ) {
+          this.masterEQ.low.value = 1.5;
+          this.masterEQ.mid.value = 0.5;
+        }
+        break;
+      case 'bright': // Modern Clean Direct Out
+        this.setMasterWarmth(20000);
+        this.setMasterTreble(2.0);
+        this.setMasterReverbWet(0.50);
+        this.setMasterVolume(-2.5);
+        if (this.masterEQ) {
+          this.masterEQ.low.value = 0.0;
+          this.masterEQ.mid.value = 0.0;
+        }
+        break;
+    }
   }
 
   getMixerSettings() {
     return {
       volume: this.masterVolume ? this.masterVolume.volume.value : -2.0,
-      warmth: 14000,
-      treble: 0,
-      reverbWet: 0
+      warmth: this.n64Filter ? this.n64Filter.frequency.value : 13500,
+      treble: this.masterEQ ? this.masterEQ.high.value : 0.0,
+      reverbWet: this.reverbReturnGain ? Math.min(1.0, this.reverbReturnGain.gain.value / 1.1) : 0.60
+    };
+  }
+
+  // --- Solo Woodwind Vibrato Control ---
+  setVibratoDepth(depth = 0.14) {
+    if (this.channelVibratos) {
+      if (this.channelVibratos[5]) this.channelVibratos[5].depth.value = depth;
+      if (this.channelVibratos[11]) this.channelVibratos[11].depth.value = depth;
+    }
+  }
+
+  // --- Atmospheric Environmental Sound Effects ---
+  playSfx(sfxName, duration = 2.5, time, velocity = 0.85) {
+    if (!this.soundRack || !this.soundRack.samplers) return;
+    const sampler = this.soundRack.samplers[sfxName];
+    if (!sampler) return;
+    const playTime = (time !== undefined) ? time : Tone.now();
+    const noteMap = {
+      wolfosHowl: 'C5',
+      towerBell: 'F#4',
+      dangerSting: 'F#4',
+      prairieWind: 'F#4'
+    };
+    const note = noteMap[sfxName] || 'C5';
+    try {
+      sampler.triggerAttackRelease(note, duration, playTime, velocity);
+    } catch (e) {
+      console.warn('SFX trigger error:', e);
+    }
+  }
+
+  playDangerSting(time = Tone.now()) {
+    this.playSfx('dangerSting', 1.8, time, 0.95);
+  }
+
+  playTowerBell(time = Tone.now()) {
+    this.playSfx('towerBell', 2.8, time, 0.85);
+  }
+
+  playWolfosHowl(time = Tone.now()) {
+    this.playSfx('wolfosHowl', 3.5, time, 0.80);
+  }
+
+  playPrairieWind(time = Tone.now()) {
+    this.playSfx('prairieWind', 4.5, time, 0.65);
+  }
+
+  // --- Autonomous Day/Night Diurnal Cycle Engine ---
+  setAutoCycle(enabled) {
+    this.autoCycleEnabled = Boolean(enabled);
+  }
+
+  toggleAutoCycle() {
+    this.autoCycleEnabled = !this.autoCycleEnabled;
+    return this.autoCycleEnabled;
+  }
+
+  isAutoCycleEnabled() {
+    return this.autoCycleEnabled;
+  }
+
+  getTimeOfDayInfo() {
+    const transport = Tone.getTransport();
+    const transportSec = transport ? transport.seconds : 0;
+    const blockStart = this.currentBlockStartTransportSec;
+    const blockDur = this.currentBlockDurationSec || this.BLOCK_DURATION_SEC;
+    const progressInBlock = Math.min(1.0, Math.max(0.0, (transportSec - blockStart) / blockDur));
+
+    let hour = 8.0;
+    let phaseName = 'Day';
+    let celestialIcon = '☀️';
+
+    if (this.cyclePhase === 'DAWN') {
+      phaseName = 'Dawn';
+      celestialIcon = '🌅';
+      if (this.currentBlock === blockMap.MORNING) {
+        hour = 6.0 + progressInBlock * 1.0;
+      } else {
+        hour = 7.0 + progressInBlock * 1.0;
+      }
+    } else if (this.cyclePhase === 'DAY') {
+      phaseName = 'Day';
+      celestialIcon = '☀️';
+      const fractionalBlock = Math.min(this.DAY_BLOCKS_TARGET, this.phaseBlockIndex + progressInBlock);
+      hour = 8.0 + (fractionalBlock / this.DAY_BLOCKS_TARGET) * 10.0; // 8:00 AM to 18:00 (6:00 PM)
+      if (hour >= 17.0) {
+        celestialIcon = '🌇';
+        phaseName = 'Dusk';
+      }
+    } else if (this.cyclePhase === 'NIGHT') {
+      phaseName = 'Night';
+      celestialIcon = '🌙';
+      const fractionalBlock = Math.min(this.NIGHT_BLOCKS_TARGET, this.phaseBlockIndex + progressInBlock);
+      hour = 18.0 + (fractionalBlock / this.NIGHT_BLOCKS_TARGET) * 12.0; // 18:00 (6:00 PM) to 30:00 (6:00 AM)
+      if (hour >= 24.0) hour -= 24.0;
+    }
+
+    const h = Math.floor(hour);
+    const m = Math.floor((hour - h) * 60);
+    const ampm = (hour >= 12 && hour < 24) ? 'PM' : 'AM';
+    const displayH = (h % 12 === 0) ? 12 : (h % 12);
+    const formattedTime = `${displayH.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} ${ampm}`;
+
+    let cycleElapsedHours = (hour >= 6.0) ? (hour - 6.0) : (hour + 18.0);
+    const cycleProgressPercent = Math.min(100, Math.max(0, (cycleElapsedHours / 24.0) * 100));
+
+    return {
+      autoCycleEnabled: this.autoCycleEnabled,
+      phase: this.cyclePhase,
+      phaseName,
+      celestialIcon,
+      formattedTime,
+      hour,
+      cycleProgressPercent,
+      phaseBlockIndex: this.phaseBlockIndex,
+      dayBlocksTarget: this.DAY_BLOCKS_TARGET,
+      nightBlocksTarget: this.NIGHT_BLOCKS_TARGET
     };
   }
 }
@@ -1229,4 +1844,58 @@ export function setMixerPreset(presetName) {
 export function getMixerSettings() {
   return sequencer ? sequencer.getMixerSettings() : null;
 }
+
+export function toggleLinkMovement() {
+  return sequencer.toggleLinkMovement();
+}
+
+export function setLinkMovement(state) {
+  sequencer.setLinkMovement(state);
+}
+
+export function getLinkMovementState() {
+  return sequencer.linkMovementState;
+}
+
+export function playDangerSting(time) {
+  sequencer.playDangerSting(time);
+}
+
+export function playTowerBell(time) {
+  sequencer.playTowerBell(time);
+}
+
+export function playWolfosHowl(time) {
+  sequencer.playWolfosHowl(time);
+}
+
+export function playPrairieWind(time) {
+  sequencer.playPrairieWind(time);
+}
+
+export function playSfx(name, duration, time, velocity) {
+  sequencer.playSfx(name, duration, time, velocity);
+}
+
+export function setVibratoDepth(depth) {
+  sequencer.setVibratoDepth(depth);
+}
+
+export function setAutoCycle(enabled) {
+  sequencer.setAutoCycle(enabled);
+}
+
+export function toggleAutoCycle() {
+  return sequencer.toggleAutoCycle();
+}
+
+export function isAutoCycleEnabled() {
+  return sequencer.isAutoCycleEnabled();
+}
+
+export function getTimeOfDayInfo() {
+  return sequencer.getTimeOfDayInfo();
+}
+
+
 

@@ -396,7 +396,13 @@ const pertinentPlan = [
       { filterRoot: 41, key: 'Ethnic Drum Kit 1', out: 'Ethnic_Drum_Kit_1.wav', pitch: 60 },
       { filterRoot: 47, key: 'Ethnic Drum Kit 2', out: 'Ethnic_Drum_Kit_2.wav', pitch: 72 }
     ]
-  }
+  },
+
+  // Atmospheric Environmental Sound Effects
+  { preset: 'MISC Wolfos Howl', percussive: true, key: 'Wolfos Howl', out: 'Wolfos_Howl.wav', pitch: 72 },
+  { preset: 'MISC Tower Bell', percussive: true, key: 'Tower Bell', out: 'Tower_Bell.wav', pitch: 66 },
+  { preset: 'AMB Danger!', percussive: true, key: 'Danger Sting', out: 'Danger_Sting.wav', pitch: 66 },
+  { preset: 'AMB Howling Wind', percussive: false, key: 'Prairie Wind', out: 'Prairie_Wind.wav', pitch: 66 }
 ];
 
 const manifest = {};

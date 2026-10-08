@@ -204,6 +204,44 @@ body {
     box-shadow: 0 0 10px rgba(250, 204, 21, 0.25);
 }
 
+.cycle-toggle-btn {
+    background: #1a222e;
+    border: 1px solid #334155;
+    color: #cbd5e1;
+    border-radius: 9999px;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    transition: all 0.2s ease;
+    font-family: inherit;
+    line-height: 1.2;
+}
+
+.cycle-toggle-btn:hover {
+    background: #243042;
+    border-color: #38bdf8;
+    color: #f1f5f9;
+}
+
+.cycle-toggle-btn.active {
+    background: rgba(56, 189, 248, 0.18);
+    border-color: #38bdf8;
+    color: #38bdf8;
+    box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+}
+
+.cycle-toggle-btn.inactive {
+    background: #161e29;
+    border-color: #2a3749;
+    color: #64748b;
+    opacity: 0.75;
+}
+
 .status-pill {
     font-size: 0.7rem;
     font-weight: 600;
@@ -562,6 +600,72 @@ body {
 .dot.blue { background: var(--blue-night); }
 .dot.red { background: var(--red-battle); }
 
+/* 24-Hour Diurnal Celestial Progress Bar */
+.diurnal-bar-container {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 0.35rem 0.6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.diurnal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.diurnal-time {
+    color: #e2e8f0;
+    letter-spacing: 0.3px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.diurnal-status {
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    color: var(--blue-night);
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    background: rgba(56, 189, 248, 0.15);
+    border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.diurnal-track {
+    position: relative;
+    width: 100%;
+    height: 6px;
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 9999px;
+    overflow: visible;
+}
+
+.diurnal-fill {
+    height: 100%;
+    border-radius: 9999px;
+    background: linear-gradient(90deg, #f59e0b 0%, #22c55e 35%, #f97316 55%, #38bdf8 80%, #6366f1 100%);
+    transition: width 0.3s linear;
+}
+
+.diurnal-marker {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 0.75rem;
+    line-height: 1;
+    pointer-events: none;
+    transition: left 0.3s linear;
+    filter: drop-shadow(0 0 4px rgba(250, 204, 21, 0.7));
+}
+
 /* Controller Pad: 3 Thumb-Friendly Tactile Buttons */
 .controller-pad {
     display: flex;
@@ -631,6 +735,115 @@ body {
     border-color: var(--red-battle);
     color: #f87171;
     box-shadow: 0 0 14px var(--red-battle-glow);
+}
+
+/* Movement Dynamic Button (Koji Kondo Melody Layering) */
+.movement-bar {
+    width: 100%;
+    margin-top: 0.15rem;
+}
+
+.movement-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    padding: 0.55rem 0.8rem;
+    background: #18202b;
+    border: 1.5px solid #2d3b4e;
+    border-radius: 10px;
+    color: #94a3b8;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.movement-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.movement-btn.running {
+    background: rgba(34, 197, 94, 0.14);
+    border-color: #22c55e;
+    color: #4ade80;
+    box-shadow: 0 0 10px rgba(34, 197, 94, 0.25);
+}
+
+.movement-btn.idle {
+    background: rgba(250, 204, 21, 0.14);
+    border-color: #facc15;
+    color: #fde047;
+    box-shadow: 0 0 10px rgba(250, 204, 21, 0.25);
+}
+
+.movement-shortcut {
+    font-size: 0.68rem;
+    color: #64748b;
+    padding: 1px 4px;
+    background: #0f172a;
+    border-radius: 4px;
+    border: 1px solid #334155;
+}
+
+/* Ambient Environmental SFX Strip */
+.ambient-sfx-bar {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.35rem;
+    width: 100%;
+}
+
+.sfx-trigger-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    padding: 0.38rem 0.2rem;
+    background: #111720;
+    border: 1px solid #243040;
+    border-radius: 8px;
+    color: #94a3b8;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.72rem;
+    font-weight: 600;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+
+.sfx-trigger-btn:hover:not(:disabled) {
+    background: #1a2433;
+    border-color: #3b82f6;
+    color: #f1f5f9;
+    transform: translateY(-1px);
+}
+
+.sfx-trigger-btn:active:not(:disabled),
+.sfx-trigger-btn.flash-active {
+    transform: translateY(1px);
+    background: #202e42;
+    border-color: var(--gold);
+    color: var(--gold);
+    box-shadow: 0 0 8px var(--gold-glow);
+}
+
+.sfx-trigger-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.sfx-icon {
+    font-size: 0.85rem;
+}
+
+.sfx-label {
+    letter-spacing: 0.2px;
 }
 
 @keyframes nintendoPulse {

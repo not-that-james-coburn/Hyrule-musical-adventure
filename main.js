@@ -10,7 +10,18 @@ import {
   HyruleSequencer,
   setMixerParameter,
   setMixerPreset,
-  getMixerSettings
+  getMixerSettings,
+  toggleLinkMovement,
+  setLinkMovement,
+  getLinkMovementState,
+  playDangerSting,
+  playTowerBell,
+  playWolfosHowl,
+  playPrairieWind,
+  setAutoCycle,
+  toggleAutoCycle,
+  isAutoCycleEnabled,
+  getTimeOfDayInfo
 } from './sequencer.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -28,6 +39,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const canvas = document.getElementById('note-stream-canvas');
   const ctx = canvas ? canvas.getContext('2d') : null;
 
+  // Link Movement Interactive Controls
+  const movementToggleBtn = document.getElementById('movement-toggle-btn');
+  const movementIcon = document.getElementById('movement-icon');
+  const movementBtnText = document.getElementById('movement-btn-text');
+
   // Mixer DOM Elements
   const mixerToggleBtn = document.getElementById('mixer-toggle-btn');
   const mixerCloseBtn = document.getElementById('mixer-close-btn');
@@ -42,7 +58,28 @@ document.addEventListener('DOMContentLoaded', () => {
   const valReverb = document.getElementById('val-reverb');
   const valVolume = document.getElementById('val-volume');
 
+  // Ambient Environmental SFX Controls
+  const sfxBellBtn = document.getElementById('sfx-bell-btn');
+  const sfxHowlBtn = document.getElementById('sfx-howl-btn');
+  const sfxStingBtn = document.getElementById('sfx-sting-btn');
+  const sfxWindBtn = document.getElementById('sfx-wind-btn');
+  const sfxButtons = [sfxBellBtn, sfxHowlBtn, sfxStingBtn, sfxWindBtn].filter(Boolean);
+
+  function flashBtn(btn) {
+    if (!btn) return;
+    btn.classList.add('flash-active');
+    setTimeout(() => btn.classList.remove('flash-active'), 250);
+  }
+
   let hasStarted = false;
+
+  // Auto Day/Night Cycle & Diurnal Clock DOM Elements
+  const cycleToggleBtn = document.getElementById('cycle-toggle-btn');
+  const cycleToggleLabel = document.getElementById('cycle-toggle-label');
+  const hudTimeClock = document.getElementById('hud-time-clock');
+  const hudCycleStatus = document.getElementById('hud-cycle-status');
+  const diurnalFill = document.getElementById('diurnal-fill');
+  const diurnalMarker = document.getElementById('diurnal-marker');
 
   // 1. Audio Loading Lifecycle
   whenAudioLoaded()
@@ -66,6 +103,19 @@ document.addEventListener('DOMContentLoaded', () => {
       if (startBtnLabel) startBtnLabel.innerText = "ERROR LOADING";
     });
 
+  function updateMovementUi(state) {
+    if (!movementToggleBtn) return;
+    if (state === 'RUNNING') {
+      movementToggleBtn.className = 'movement-btn running';
+      if (movementIcon) movementIcon.innerText = '🏃';
+      if (movementBtnText) movementBtnText.innerText = 'LINK RUNNING (FULL MELODY)';
+    } else {
+      movementToggleBtn.className = 'movement-btn idle';
+      if (movementIcon) movementIcon.innerText = '🧍';
+      if (movementBtnText) movementBtnText.innerText = 'LINK STANDING STILL (PASTORAL HARP)';
+    }
+  }
+
   // 2. Play Button Overlay Tap
   if (startBtn) {
     startBtn.addEventListener('click', async () => {
@@ -84,12 +134,112 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 450);
       }
 
-      // Unlock mode buttons
+      // Unlock mode buttons, movement button, cycle button & ambient SFX buttons
       modeButtons.forEach(btn => (btn.disabled = false));
+      sfxButtons.forEach(btn => (btn.disabled = false));
+      if (cycleToggleBtn) cycleToggleBtn.disabled = false;
+      if (movementToggleBtn) {
+        movementToggleBtn.disabled = false;
+        updateMovementUi(getLinkMovementState());
+      }
     });
   }
 
-  // 3. Handle Mode Button Clicks
+  // 3. Link Movement Button Tap
+  if (movementToggleBtn) {
+    movementToggleBtn.addEventListener('click', () => {
+      if (movementToggleBtn.disabled || !hasStarted) return;
+      const next = toggleLinkMovement();
+      updateMovementUi(next);
+    });
+  }
+
+  // 4. Ambient Environmental SFX Buttons Tap
+  if (sfxBellBtn) {
+    sfxBellBtn.addEventListener('click', () => {
+      if (sfxBellBtn.disabled || !hasStarted) return;
+      flashBtn(sfxBellBtn);
+      playTowerBell();
+    });
+  }
+  if (sfxHowlBtn) {
+    sfxHowlBtn.addEventListener('click', () => {
+      if (sfxHowlBtn.disabled || !hasStarted) return;
+      flashBtn(sfxHowlBtn);
+      playWolfosHowl();
+    });
+  }
+  if (sfxStingBtn) {
+    sfxStingBtn.addEventListener('click', () => {
+      if (sfxStingBtn.disabled || !hasStarted) return;
+      flashBtn(sfxStingBtn);
+      playDangerSting();
+    });
+  }
+  if (sfxWindBtn) {
+    sfxWindBtn.addEventListener('click', () => {
+      if (sfxWindBtn.disabled || !hasStarted) return;
+      flashBtn(sfxWindBtn);
+      playPrairieWind();
+    });
+  }
+
+  // 5. Keyboard Shortcuts: Space/M for Link Movement, 1/2/3 for Game Modes, B/H/D/W for SFX
+  window.addEventListener('keydown', (e) => {
+    if (!hasStarted) return;
+    const key = e.key.toLowerCase();
+    if (e.code === 'Space' || e.key === ' ' || key === 'm') {
+      e.preventDefault();
+      const next = toggleLinkMovement();
+      updateMovementUi(next);
+    } else if (e.key === '1') {
+      changeGameMode('EXPLORATION');
+      modeButtons.forEach(b => b.classList.remove('active'));
+      const btn = document.querySelector('.day-btn');
+      if (btn) btn.classList.add('active');
+    } else if (e.key === '2') {
+      changeGameMode('QUIET');
+      modeButtons.forEach(b => b.classList.remove('active'));
+      const btn = document.querySelector('.night-btn');
+      if (btn) btn.classList.add('active');
+    } else if (e.key === '3') {
+      changeGameMode('BATTLE');
+      modeButtons.forEach(b => b.classList.remove('active'));
+      const btn = document.querySelector('.battle-btn');
+      if (btn) btn.classList.add('active');
+    } else if (key === 'b') {
+      flashBtn(sfxBellBtn);
+      playTowerBell();
+    } else if (key === 'h') {
+      flashBtn(sfxHowlBtn);
+      playWolfosHowl();
+    } else if (key === 'd') {
+      flashBtn(sfxStingBtn);
+      playDangerSting();
+    } else if (key === 'w') {
+      flashBtn(sfxWindBtn);
+      playPrairieWind();
+    } else if (key === 'a') {
+      const enabled = toggleAutoCycle();
+      if (cycleToggleBtn) {
+        cycleToggleBtn.classList.toggle('active', enabled);
+        cycleToggleBtn.classList.toggle('inactive', !enabled);
+        if (cycleToggleLabel) cycleToggleLabel.innerText = enabled ? "CYCLE: ON" : "CYCLE: OFF";
+      }
+    }
+  });
+
+  // 6. Auto Day/Night Cycle Button Tap
+  if (cycleToggleBtn) {
+    cycleToggleBtn.addEventListener('click', () => {
+      const enabled = toggleAutoCycle();
+      cycleToggleBtn.classList.toggle('active', enabled);
+      cycleToggleBtn.classList.toggle('inactive', !enabled);
+      if (cycleToggleLabel) cycleToggleLabel.innerText = enabled ? "CYCLE: ON" : "CYCLE: OFF";
+    });
+  }
+
+  // 7. Handle Mode Button Clicks
   modeButtons.forEach(btn => {
     btn.addEventListener('click', () => {
       if (btn.disabled || !hasStarted) return;
@@ -608,6 +758,33 @@ document.addEventListener('DOMContentLoaded', () => {
       if (counterText !== lastCounterText) {
         cueMeasureCounterEl.innerText = counterText;
         lastCounterText = counterText;
+      }
+    }
+
+    // 6. 24-Hour Diurnal Celestial Progress Bar & Clock
+    const timeInfo = getTimeOfDayInfo();
+    if (timeInfo) {
+      if (hudTimeClock) {
+        hudTimeClock.innerText = `${timeInfo.celestialIcon} ${timeInfo.formattedTime} (${timeInfo.phaseName})`;
+      }
+      if (hudCycleStatus) {
+        hudCycleStatus.innerText = timeInfo.autoCycleEnabled ? "AUTO CYCLE: ON" : "MANUAL MODE";
+        hudCycleStatus.style.color = timeInfo.autoCycleEnabled ? "var(--blue-night)" : "#94a3b8";
+      }
+      if (diurnalFill) {
+        diurnalFill.style.width = `${timeInfo.cycleProgressPercent.toFixed(1)}%`;
+      }
+      if (diurnalMarker) {
+        diurnalMarker.style.left = `${timeInfo.cycleProgressPercent.toFixed(1)}%`;
+        diurnalMarker.innerText = timeInfo.celestialIcon;
+      }
+      // Sync controller mode buttons if auto cycle is active
+      if (timeInfo.autoCycleEnabled && isPlaying) {
+        const curMode = cueInfo.currentMode;
+        modeButtons.forEach(b => {
+          const m = b.getAttribute('data-mode');
+          b.classList.toggle('active', m === curMode);
+        });
       }
     }
   }
