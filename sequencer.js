@@ -149,39 +149,39 @@ export const blockMap = {
     mode: 'EXPLORATION'
   },
 
-  // Ongoing Quiet / Night Pool (shuffled via ShuffleBag, no sequential repeats)
+  // Ongoing Quiet / Rest Pool (shuffled via ShuffleBag, no sequential repeats)
   QUIET: [
     {
-      id: 'Night 1 (Bars 137–145)',
+      id: 'Rest 1 (Bars 137–145)',
       name: 'Nocturne Harp Serenade',
       startBar: 137,
       endBar: 145,
       mode: 'QUIET'
     },
     {
-      id: 'Night 2 (Bars 145–153)',
+      id: 'Rest 2 (Bars 145–153)',
       name: 'Starlit Plains Solitude',
       startBar: 145,
       endBar: 153,
       mode: 'QUIET'
     },
     {
-      id: 'Night 3 (Bars 153–161)',
-      name: 'Gentle Nocturnal Ocarina',
+      id: 'Rest 3 (Bars 153–161)',
+      name: 'Gentle Pastoral Ocarina',
       startBar: 153,
       endBar: 161,
       mode: 'QUIET'
     },
     {
-      id: 'Night 4 (Bars 161–169)',
-      name: 'Campfire Night Reflections',
+      id: 'Rest 4 (Bars 161–169)',
+      name: 'Campfire Rest Reflections',
       startBar: 161,
       endBar: 169,
       mode: 'QUIET'
     },
     {
-      id: 'Night 5 (Bars 169–177)',
-      name: 'Dawn Whispers Harmony',
+      id: 'Rest 5 (Bars 169–177)',
+      name: 'Sanctuary Whispers Harmony',
       startBar: 169,
       endBar: 177,
       mode: 'QUIET'
@@ -298,12 +298,9 @@ export class HyruleSequencer {
     // Stream notes buffer for continuous right-to-left visualizer
     this.streamNotes = [];
 
-    // Autonomous Day/Night Diurnal Cycle Engine
-    this.autoCycleEnabled = true;
-    this.cyclePhase = 'DAWN'; // 'DAWN', 'DAY', 'DUSK', 'NIGHT'
-    this.phaseBlockIndex = 0;
-    this.DAY_BLOCKS_TARGET = 5;   // 5 exploration blocks (~64s)
-    this.NIGHT_BLOCKS_TARGET = 4; // 4 quiet blocks (~51s)
+    // Simple Mode Randomizer Engine (Adventure, Rest, Battle)
+    this.randomizerEnabled = true;
+    this.currentModeBlocksRemaining = 0;
 
     this.isInitialized = false;
     this.initPromise = null;
@@ -864,38 +861,23 @@ export class HyruleSequencer {
       this.postBattleState = 'QUIET';
       this.executeMeasureInterrupt(blockMap.BATTLE_OUTRO, 'QUIET');
     } else if (newState === 'QUIET' && this.currentState === 'EXPLORATION') {
-      // Immediate volume crossfade mid-bar: Castle gate bell tolls, followed by wolf howling across Hyrule
-      this.cyclePhase = 'NIGHT';
-      this.phaseBlockIndex = 0;
-      const now = Tone.now();
-      this.playTowerBell(now + 0.05);
-      this.playTowerBell(now + 1.6);
-      this.playWolfosHowl(now + 2.8);
+      // Immediate volume crossfade mid-bar into serene Rest mode
       this.executeMovementCrossfade('QUIET');
       this.currentState = 'QUIET';
       this.pendingStateChange = 'QUIET';
       this.requeueUpcomingPhrase('QUIET');
     } else if (newState === 'EXPLORATION' && this.currentState === 'QUIET') {
-      // Immediate volume crossfade mid-bar: percussion resumes immediately
-      this.cyclePhase = 'DAY';
-      this.phaseBlockIndex = 0;
+      // Immediate volume crossfade mid-bar into active Adventure mode
       this.executeMovementCrossfade('EXPLORATION');
       this.currentState = 'EXPLORATION';
       this.pendingStateChange = 'EXPLORATION';
       this.requeueUpcomingPhrase('EXPLORATION');
     } else if (newState === 'EXPLORATION') {
-      this.cyclePhase = 'DAY';
-      this.phaseBlockIndex = 0;
       this.executeMovementCrossfade('EXPLORATION');
       this.currentState = 'EXPLORATION';
       this.pendingStateChange = 'EXPLORATION';
       this.requeueUpcomingPhrase('EXPLORATION');
     } else if (newState === 'QUIET') {
-      this.cyclePhase = 'NIGHT';
-      this.phaseBlockIndex = 0;
-      const now = Tone.now();
-      this.playTowerBell(now + 0.05);
-      this.playWolfosHowl(now + 2.0);
       this.executeMovementCrossfade('QUIET');
       this.currentState = 'QUIET';
       this.pendingStateChange = 'QUIET';
@@ -1093,33 +1075,6 @@ export class HyruleSequencer {
       return this.battleBag.next();
     }
 
-    // Autonomous Day/Night Diurnal Cycle Selection Logic
-    if (this.autoCycleEnabled && targetState !== 'BATTLE' && targetState !== 'BATTLE_INTRO' && targetState !== 'BATTLE_OUTRO') {
-      if (this.cyclePhase === 'DAWN') {
-        if (this.currentBlock === blockMap.MORNING) {
-          return blockMap.INTRO; // Phrase 1: Intro Fanfare (Bars 9–17)
-        }
-        if (this.currentBlock === blockMap.INTRO) {
-          return blockMap.EXPLORATION[0]; // Day 1 Main Theme A (Bars 17–25)
-        }
-      }
-
-      if (this.cyclePhase === 'DAY') {
-        // If playing final daytime block, pre-queue first Night block
-        if (this.phaseBlockIndex >= this.DAY_BLOCKS_TARGET - 1) {
-          return this.quietBag.next();
-        }
-        return this.explorationBag.next();
-      }
-
-      if (this.cyclePhase === 'NIGHT') {
-        // If playing final nighttime block, pre-queue Morning Sunrise block
-        if (this.phaseBlockIndex >= this.NIGHT_BLOCKS_TARGET - 1) {
-          return blockMap.MORNING; // Sunrise Dawn Ocarina (Bars 1–9)
-        }
-        return this.quietBag.next();
-      }
-    }
 
     // Manual Mode Fallback
     if (targetState === 'QUIET') {
@@ -1497,52 +1452,70 @@ export class HyruleSequencer {
       this.currentState = this.postBattleState || 'EXPLORATION';
     }
 
-    // Advance Autonomous Day/Night Diurnal Cycle phase & trigger environmental transitions
-    if (this.autoCycleEnabled && this.currentState !== 'BATTLE' && this.currentState !== 'BATTLE_INTRO') {
-      const isMorning = (this.currentBlock === blockMap.MORNING);
-      const isIntro = (this.currentBlock === blockMap.INTRO);
-      const isQuietBlock = blockMap.QUIET.some(b => b.id === this.currentBlock.id);
-      const isExploreBlock = blockMap.EXPLORATION.some(b => b.id === this.currentBlock.id);
-
-      if (isMorning) {
-        this.cyclePhase = 'DAWN';
-        this.phaseBlockIndex = 0;
-        this.currentState = 'EXPLORATION';
-        this.executeMovementCrossfade('EXPLORATION');
-      } else if (isIntro) {
-        this.cyclePhase = 'DAWN';
-        this.phaseBlockIndex = 1;
-      } else if (isQuietBlock) {
-        if (this.cyclePhase !== 'NIGHT') {
-          // Sunset / Dusk arrival: toll Castle Town drawbridge bell twice and wolf howl!
-          this.cyclePhase = 'NIGHT';
-          this.phaseBlockIndex = 0;
-          this.currentState = 'QUIET';
-          this.playTowerBell(audioTime + 0.05);
-          this.playTowerBell(audioTime + 1.6);
-          this.playWolfosHowl(audioTime + 2.8);
-          this.executeMovementCrossfade('QUIET');
-        } else {
-          this.phaseBlockIndex++;
-        }
-      } else if (isExploreBlock) {
-        if (this.cyclePhase !== 'DAY') {
-          this.cyclePhase = 'DAY';
-          this.phaseBlockIndex = 0;
-          this.currentState = 'EXPLORATION';
-          this.executeMovementCrossfade('EXPLORATION');
-        } else {
-          this.phaseBlockIndex++;
-        }
-      }
-    }
-
     // 3. Pre-queue the NEXT upcoming block ahead of time (1 block lookahead)
     const nextPhraseIdx = this.phraseIndex + 1;
     const nextStartTransportSec = startTransportSec + blockDurSec;
     this.upcomingBlockStartSec = nextStartTransportSec;
 
-    const nextBlock = this.selectBlockForState(this.currentState);
+    let nextBlock = null;
+
+    if (this.randomizerEnabled) {
+      if (this.currentBlock === blockMap.MORNING) {
+        // Phrase 0 -> Phrase 1 (Heroic Intro Fanfare)
+        nextBlock = blockMap.INTRO;
+      } else if (this.currentBlock === blockMap.INTRO) {
+        // Phrase 1 -> Phrase 2 (Day 1 Main Theme)
+        nextBlock = blockMap.EXPLORATION[0];
+        this.currentState = 'EXPLORATION';
+        this.currentModeBlocksRemaining = 1;
+      } else if (this.currentBlock === blockMap.BATTLE_INTRO) {
+        // Just entered battle -> queue battle skirmish
+        this.currentState = 'BATTLE';
+        nextBlock = this.battleBag.next();
+      } else if (this.currentState === 'BATTLE' && this.currentBlock !== blockMap.BATTLE_OUTRO) {
+        // Combat skirmish completed -> queue victory fanfare
+        nextBlock = blockMap.BATTLE_OUTRO;
+        this.postBattleState = (Math.random() < 0.5) ? 'EXPLORATION' : 'QUIET';
+      } else if (this.currentBlock === blockMap.BATTLE_OUTRO) {
+        // Victory fanfare completed -> resolve into postBattleState (Adventure or Rest)
+        const target = this.postBattleState || 'EXPLORATION';
+        this.postBattleState = null;
+        this.currentState = target;
+        this.currentModeBlocksRemaining = (Math.random() < 0.5 ? 1 : 2);
+        nextBlock = (target === 'QUIET') ? this.quietBag.next() : this.explorationBag.next();
+      } else {
+        // Active in EXPLORATION (Adventure) or QUIET (Rest)
+        this.currentModeBlocksRemaining--;
+        if (this.currentModeBlocksRemaining > 0) {
+          nextBlock = (this.currentState === 'QUIET') ? this.quietBag.next() : this.explorationBag.next();
+        } else {
+          // Mode phrase complete: randomly cycle to one of the other modes!
+          const candidateModes = (this.currentState === 'EXPLORATION')
+            ? ['QUIET', 'BATTLE']
+            : ['EXPLORATION', 'BATTLE'];
+          const chosenMode = candidateModes[Math.floor(Math.random() * candidateModes.length)];
+
+          if (chosenMode === 'BATTLE') {
+            nextBlock = blockMap.BATTLE_INTRO;
+            this.pendingStateChange = 'BATTLE';
+          } else if (chosenMode === 'QUIET') {
+            this.currentState = 'QUIET';
+            this.pendingStateChange = 'QUIET';
+            this.currentModeBlocksRemaining = (Math.random() < 0.5 ? 1 : 2);
+            nextBlock = this.quietBag.next();
+          } else {
+            this.currentState = 'EXPLORATION';
+            this.pendingStateChange = 'EXPLORATION';
+            this.currentModeBlocksRemaining = (Math.random() < 0.5 ? 1 : 2);
+            nextBlock = this.explorationBag.next();
+          }
+        }
+      }
+    } else {
+      // Manual mode: continue selected mode endlessly
+      nextBlock = this.selectBlockForState(this.currentState);
+    }
+
     this.upcomingBlock = nextBlock;
     this.scheduleNotesForBlock(nextBlock, nextPhraseIdx, nextStartTransportSec);
 
@@ -1576,12 +1549,11 @@ export class HyruleSequencer {
       this.streamNotes = [];
       this.phraseEventIds = {};
 
-      // Reset shuffle bags & diurnal cycle
+      // Reset shuffle bags & randomizer state
       this.explorationBag.reset();
       this.battleBag.reset();
       this.quietBag.reset();
-      this.cyclePhase = 'DAWN';
-      this.phaseBlockIndex = 0;
+      this.currentModeBlocksRemaining = 1;
 
       // Startup Sequence:
       // Phrase 0: Morning Sunrise cue (Bars 1–9) with authentic rubato tempo variations (16.867s)
@@ -1783,78 +1755,34 @@ export class HyruleSequencer {
     this.playSfx('prairieWind', 4.5, time, 0.65);
   }
 
-  // --- Autonomous Day/Night Diurnal Cycle Engine ---
-  setAutoCycle(enabled) {
-    this.autoCycleEnabled = Boolean(enabled);
+  // --- Simple Mode Randomizer (Adventure, Rest, Battle) ---
+  setRandomizer(enabled) {
+    this.randomizerEnabled = Boolean(enabled);
+    return this.randomizerEnabled;
   }
 
-  toggleAutoCycle() {
-    this.autoCycleEnabled = !this.autoCycleEnabled;
-    return this.autoCycleEnabled;
+  toggleRandomizer() {
+    this.randomizerEnabled = !this.randomizerEnabled;
+    return this.randomizerEnabled;
   }
 
-  isAutoCycleEnabled() {
-    return this.autoCycleEnabled;
+  isRandomizerEnabled() {
+    return this.randomizerEnabled;
   }
 
-  getTimeOfDayInfo() {
-    const transport = Tone.getTransport();
-    const transportSec = transport ? transport.seconds : 0;
-    const blockStart = this.currentBlockStartTransportSec;
-    const blockDur = this.currentBlockDurationSec || this.BLOCK_DURATION_SEC;
-    const progressInBlock = Math.min(1.0, Math.max(0.0, (transportSec - blockStart) / blockDur));
-
-    let hour = 8.0;
-    let phaseName = 'Day';
-    let celestialIcon = '☀️';
-
-    if (this.cyclePhase === 'DAWN') {
-      phaseName = 'Dawn';
-      celestialIcon = '🌅';
-      if (this.currentBlock === blockMap.MORNING) {
-        hour = 6.0 + progressInBlock * 1.0;
-      } else {
-        hour = 7.0 + progressInBlock * 1.0;
-      }
-    } else if (this.cyclePhase === 'DAY') {
-      phaseName = 'Day';
-      celestialIcon = '☀️';
-      const fractionalBlock = Math.min(this.DAY_BLOCKS_TARGET, this.phaseBlockIndex + progressInBlock);
-      hour = 8.0 + (fractionalBlock / this.DAY_BLOCKS_TARGET) * 10.0; // 8:00 AM to 18:00 (6:00 PM)
-      if (hour >= 17.0) {
-        celestialIcon = '🌇';
-        phaseName = 'Dusk';
-      }
-    } else if (this.cyclePhase === 'NIGHT') {
-      phaseName = 'Night';
-      celestialIcon = '🌙';
-      const fractionalBlock = Math.min(this.NIGHT_BLOCKS_TARGET, this.phaseBlockIndex + progressInBlock);
-      hour = 18.0 + (fractionalBlock / this.NIGHT_BLOCKS_TARGET) * 12.0; // 18:00 (6:00 PM) to 30:00 (6:00 AM)
-      if (hour >= 24.0) hour -= 24.0;
-    }
-
-    const h = Math.floor(hour);
-    const m = Math.floor((hour - h) * 60);
-    const ampm = (hour >= 12 && hour < 24) ? 'PM' : 'AM';
-    const displayH = (h % 12 === 0) ? 12 : (h % 12);
-    const formattedTime = `${displayH.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} ${ampm}`;
-
-    let cycleElapsedHours = (hour >= 6.0) ? (hour - 6.0) : (hour + 18.0);
-    const cycleProgressPercent = Math.min(100, Math.max(0, (cycleElapsedHours / 24.0) * 100));
-
+  getRandomizerInfo() {
     return {
-      autoCycleEnabled: this.autoCycleEnabled,
-      phase: this.cyclePhase,
-      phaseName,
-      celestialIcon,
-      formattedTime,
-      hour,
-      cycleProgressPercent,
-      phaseBlockIndex: this.phaseBlockIndex,
-      dayBlocksTarget: this.DAY_BLOCKS_TARGET,
-      nightBlocksTarget: this.NIGHT_BLOCKS_TARGET
+      enabled: this.randomizerEnabled,
+      currentMode: this.currentState,
+      upcomingMode: this.upcomingBlock ? this.upcomingBlock.mode : null
     };
   }
+
+  // Compatibility aliases
+  setAutoCycle(enabled) { return this.setRandomizer(enabled); }
+  toggleAutoCycle() { return this.toggleRandomizer(); }
+  isAutoCycleEnabled() { return this.isRandomizerEnabled(); }
+  getTimeOfDayInfo() { return null; }
 }
 
 // Singleton instance for global page lifecycle
@@ -1979,20 +1907,36 @@ export function setVibratoDepth(depth) {
   sequencer.setVibratoDepth(depth);
 }
 
+export function setRandomizer(enabled) {
+  return sequencer.setRandomizer(enabled);
+}
+
+export function toggleRandomizer() {
+  return sequencer.toggleRandomizer();
+}
+
+export function isRandomizerEnabled() {
+  return sequencer.isRandomizerEnabled();
+}
+
+export function getRandomizerInfo() {
+  return sequencer.getRandomizerInfo();
+}
+
 export function setAutoCycle(enabled) {
-  sequencer.setAutoCycle(enabled);
+  return sequencer.setRandomizer(enabled);
 }
 
 export function toggleAutoCycle() {
-  return sequencer.toggleAutoCycle();
+  return sequencer.toggleRandomizer();
 }
 
 export function isAutoCycleEnabled() {
-  return sequencer.isAutoCycleEnabled();
+  return sequencer.isRandomizerEnabled();
 }
 
 export function getTimeOfDayInfo() {
-  return sequencer.getTimeOfDayInfo();
+  return null;
 }
 
 

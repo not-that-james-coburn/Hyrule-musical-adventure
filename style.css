@@ -204,6 +204,7 @@ body {
     box-shadow: 0 0 10px rgba(250, 204, 21, 0.25);
 }
 
+.random-toggle-btn,
 .cycle-toggle-btn {
     background: #1a222e;
     border: 1px solid #334155;
@@ -222,12 +223,14 @@ body {
     line-height: 1.2;
 }
 
+.random-toggle-btn:hover,
 .cycle-toggle-btn:hover {
     background: #243042;
     border-color: #38bdf8;
     color: #f1f5f9;
 }
 
+.random-toggle-btn.active,
 .cycle-toggle-btn.active {
     background: rgba(56, 189, 248, 0.18);
     border-color: #38bdf8;
@@ -235,6 +238,7 @@ body {
     box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
 }
 
+.random-toggle-btn.inactive,
 .cycle-toggle-btn.inactive {
     background: #161e29;
     border-color: #2a3749;
@@ -608,71 +612,6 @@ body {
 .dot.blue { background: var(--blue-night); }
 .dot.red { background: var(--red-battle); }
 
-/* 24-Hour Diurnal Celestial Progress Bar */
-.diurnal-bar-container {
-    background: rgba(0, 0, 0, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 8px;
-    padding: 0.35rem 0.6rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-}
-
-.diurnal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.72rem;
-    font-weight: 700;
-}
-
-.diurnal-time {
-    color: #e2e8f0;
-    letter-spacing: 0.3px;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-}
-
-.diurnal-status {
-    font-size: 0.62rem;
-    font-weight: 800;
-    letter-spacing: 0.5px;
-    color: var(--blue-night);
-    padding: 0.1rem 0.35rem;
-    border-radius: 4px;
-    background: rgba(56, 189, 248, 0.15);
-    border: 1px solid rgba(56, 189, 248, 0.3);
-}
-
-.diurnal-track {
-    position: relative;
-    width: 100%;
-    height: 6px;
-    background: #0f172a;
-    border: 1px solid #1e293b;
-    border-radius: 9999px;
-    overflow: visible;
-}
-
-.diurnal-fill {
-    height: 100%;
-    border-radius: 9999px;
-    background: linear-gradient(90deg, #f59e0b 0%, #22c55e 35%, #f97316 55%, #38bdf8 80%, #6366f1 100%);
-    transition: width 0.3s linear;
-}
-
-.diurnal-marker {
-    position: absolute;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 0.75rem;
-    line-height: 1;
-    pointer-events: none;
-    transition: left 0.3s linear;
-    filter: drop-shadow(0 0 4px rgba(250, 204, 21, 0.7));
-}
 
 /* Controller Pad: 3 Thumb-Friendly Tactile Buttons */
 .controller-pad {
@@ -729,7 +668,8 @@ body {
     box-shadow: 0 0 14px var(--green-day-glow);
 }
 
-/* Night Mode Active */
+/* Rest Mode Active */
+.rest-btn.active:not(:disabled),
 .night-btn.active:not(:disabled) {
     background: rgba(56, 189, 248, 0.18);
     border-color: var(--blue-night);

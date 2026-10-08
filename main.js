@@ -18,10 +18,13 @@ import {
   playTowerBell,
   playWolfosHowl,
   playPrairieWind,
+  setRandomizer,
+  toggleRandomizer,
+  isRandomizerEnabled,
+  getRandomizerInfo,
   setAutoCycle,
   toggleAutoCycle,
-  isAutoCycleEnabled,
-  getTimeOfDayInfo
+  isAutoCycleEnabled
 } from './sequencer.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -75,13 +78,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let hasStarted = false;
 
-  // Auto Day/Night Cycle & Diurnal Clock DOM Elements
-  const cycleToggleBtn = document.getElementById('cycle-toggle-btn');
-  const cycleToggleLabel = document.getElementById('cycle-toggle-label');
-  const hudTimeClock = document.getElementById('hud-time-clock');
-  const hudCycleStatus = document.getElementById('hud-cycle-status');
-  const diurnalFill = document.getElementById('diurnal-fill');
-  const diurnalMarker = document.getElementById('diurnal-marker');
+  // Random Mode Cycling DOM Elements
+  const randomToggleBtn = document.getElementById('random-toggle-btn') || document.getElementById('cycle-toggle-btn');
+  const randomToggleLabel = document.getElementById('random-toggle-label') || document.getElementById('cycle-toggle-label');
 
   // 1. Audio Loading Lifecycle
   whenAudioLoaded()
@@ -136,10 +135,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 450);
       }
 
-      // Unlock mode buttons, movement button, cycle button & ambient SFX buttons
+      // Unlock mode buttons, movement button, randomizer button & ambient SFX buttons
       modeButtons.forEach(btn => (btn.disabled = false));
       sfxButtons.forEach(btn => (btn.disabled = false));
-      if (cycleToggleBtn) cycleToggleBtn.disabled = false;
+      if (randomToggleBtn) randomToggleBtn.disabled = false;
       if (movementToggleBtn) {
         movementToggleBtn.disabled = false;
         updateMovementUi(getLinkMovementState());
@@ -202,7 +201,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (e.key === '2') {
       changeGameMode('QUIET');
       modeButtons.forEach(b => b.classList.remove('active'));
-      const btn = document.querySelector('.night-btn');
+      const btn = document.querySelector('.rest-btn') || document.querySelector('.night-btn');
       if (btn) btn.classList.add('active');
     } else if (e.key === '3') {
       changeGameMode('BATTLE');
@@ -221,23 +220,25 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (key === 'w') {
       flashBtn(sfxWindBtn);
       playPrairieWind();
-    } else if (key === 'a') {
-      const enabled = toggleAutoCycle();
-      if (cycleToggleBtn) {
-        cycleToggleBtn.classList.toggle('active', enabled);
-        cycleToggleBtn.classList.toggle('inactive', !enabled);
-        if (cycleToggleLabel) cycleToggleLabel.innerText = enabled ? "CYCLE: ON" : "CYCLE: OFF";
-      }
+    } else if (key === 'r' || key === 'a') {
+      const enabled = toggleRandomizer();
+      updateRandomizerUi(enabled);
     }
   });
 
-  // 6. Auto Day/Night Cycle Button Tap
-  if (cycleToggleBtn) {
-    cycleToggleBtn.addEventListener('click', () => {
-      const enabled = toggleAutoCycle();
-      cycleToggleBtn.classList.toggle('active', enabled);
-      cycleToggleBtn.classList.toggle('inactive', !enabled);
-      if (cycleToggleLabel) cycleToggleLabel.innerText = enabled ? "CYCLE: ON" : "CYCLE: OFF";
+  // 6. Simple Mode Randomizer Toggle Button Tap
+  function updateRandomizerUi(enabled) {
+    if (randomToggleBtn) {
+      randomToggleBtn.classList.toggle('active', enabled);
+      randomToggleBtn.classList.toggle('inactive', !enabled);
+      if (randomToggleLabel) randomToggleLabel.innerText = enabled ? "RANDOM: ON" : "RANDOM: OFF";
+    }
+  }
+
+  if (randomToggleBtn) {
+    randomToggleBtn.addEventListener('click', () => {
+      const enabled = toggleRandomizer();
+      updateRandomizerUi(enabled);
     });
   }
 
@@ -666,7 +667,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (cueDisplayEl) {
       const modeIcon = (cueInfo.cueMode === 'BATTLE')
         ? '⚔️'
-        : (cueInfo.cueMode === 'QUIET' ? '🌙' : '☀️');
+        : (cueInfo.cueMode === 'QUIET' ? '🌿' : '☀️');
       const cueText = `${modeIcon} ${cueInfo.cueId}`;
       if (cueText !== lastCueText) {
         cueDisplayEl.innerText = cueText;
@@ -718,7 +719,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (cueInfo.upcomingCueId) {
         const nextIcon = (cueInfo.upcomingCueMode === 'BATTLE')
           ? '⚔️'
-          : (cueInfo.upcomingCueMode === 'QUIET' ? '🌙' : '☀️');
+          : (cueInfo.upcomingCueMode === 'QUIET' ? '🌿' : '☀️');
         const nextText = `${nextIcon} ${cueInfo.upcomingCueId.replace(/\s*\(Bars.*?\)/, '')}`;
         if (nextText !== lastNextText) {
           cueNextDisplayEl.innerText = nextText;
@@ -777,31 +778,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    // 6. 24-Hour Diurnal Celestial Progress Bar & Clock
-    const timeInfo = getTimeOfDayInfo();
-    if (timeInfo) {
-      if (hudTimeClock) {
-        hudTimeClock.innerText = `${timeInfo.celestialIcon} ${timeInfo.formattedTime} (${timeInfo.phaseName})`;
-      }
-      if (hudCycleStatus) {
-        hudCycleStatus.innerText = timeInfo.autoCycleEnabled ? "AUTO CYCLE: ON" : "MANUAL MODE";
-        hudCycleStatus.style.color = timeInfo.autoCycleEnabled ? "var(--blue-night)" : "#94a3b8";
-      }
-      if (diurnalFill) {
-        diurnalFill.style.width = `${timeInfo.cycleProgressPercent.toFixed(1)}%`;
-      }
-      if (diurnalMarker) {
-        diurnalMarker.style.left = `${timeInfo.cycleProgressPercent.toFixed(1)}%`;
-        diurnalMarker.innerText = timeInfo.celestialIcon;
-      }
-      // Sync controller mode buttons if auto cycle is active
-      if (timeInfo.autoCycleEnabled && isPlaying) {
-        const curMode = cueInfo.currentMode;
-        modeButtons.forEach(b => {
-          const m = b.getAttribute('data-mode');
-          b.classList.toggle('active', m === curMode);
-        });
-      }
+    // 6. Sync controller mode buttons (Adventure, Rest, Battle) with current playing mode
+    if (isPlaying) {
+      const curMode = cueInfo.currentMode;
+      modeButtons.forEach(b => {
+        const m = b.getAttribute('data-mode');
+        b.classList.toggle('active', m === curMode);
+      });
     }
   }
 

@@ -33,8 +33,8 @@
                 <span class="brand-text">HYRULE FIELD</span>
             </div>
             <div class="header-actions">
-                <button id="cycle-toggle-btn" class="cycle-toggle-btn active" aria-label="Toggle Auto Day/Night Cycle" title="Toggle Auto Day/Night Cycle [A]">
-                    <span id="cycle-toggle-icon">🔄</span> <span id="cycle-toggle-label">CYCLE: ON</span>
+                <button id="random-toggle-btn" class="random-toggle-btn active" aria-label="Toggle Random Mode Cycling" title="Toggle Random Mode Cycling [R]">
+                    <span id="random-toggle-icon">🔀</span> <span id="random-toggle-label">RANDOM: ON</span>
                 </button>
                 <button id="mixer-toggle-btn" class="mixer-toggle-btn" aria-label="Toggle Sound Mixer" title="Audio Mixer">
                     🎛️ <span class="mixer-btn-label">SOUND</span>
@@ -140,26 +140,14 @@
             </div>
         </div>
 
-        <!-- 24-Hour Diurnal Celestial Progress Bar -->
-        <div class="diurnal-bar-container" title="Hyrule 24-Hour Diurnal Progression">
-            <div class="diurnal-header">
-                <span id="hud-time-clock" class="diurnal-time">☀️ 08:00 AM (Day)</span>
-                <span id="hud-cycle-status" class="diurnal-status">AUTO CYCLE: ON</span>
-            </div>
-            <div class="diurnal-track">
-                <div id="diurnal-fill" class="diurnal-fill" style="width: 25%;"></div>
-                <div id="diurnal-marker" class="diurnal-marker" style="left: 25%;">☀️</div>
-            </div>
-        </div>
-
         <!-- Nintendo 3-Button Control Pad (Thumb-friendly horizontal row) -->
         <nav class="controller-pad">
             <button class="pad-btn day-btn active" data-mode="EXPLORATION" disabled>
                 <span class="pad-icon">☀️</span>
                 <span class="pad-label">Adventure</span>
             </button>
-            <button class="pad-btn night-btn" data-mode="QUIET" disabled>
-                <span class="pad-icon">🌙</span>
+            <button class="pad-btn rest-btn" data-mode="QUIET" disabled>
+                <span class="pad-icon">🌿</span>
                 <span class="pad-label">Rest</span>
             </button>
             <button class="pad-btn battle-btn" data-mode="BATTLE" disabled>
