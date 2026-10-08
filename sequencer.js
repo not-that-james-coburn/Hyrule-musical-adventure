@@ -1276,12 +1276,13 @@ export class HyruleSequencer {
   getMeasureLines(viewportStartSec, viewportEndSec) {
     const lines = [];
     const ticksPerBar = 4 * this.PPQ;
+    const currentTransportSec = Tone.getTransport() ? Tone.getTransport().seconds : 0;
 
     const activeBlocks = (this.blockHistory && this.blockHistory.length > 0)
       ? this.blockHistory
       : [
-          { block: blockMap.MORNING, startTransportSec: 0, durationSec: this.getBlockDuration(blockMap.MORNING) },
-          { block: blockMap.INTRO, startTransportSec: this.getBlockDuration(blockMap.MORNING), durationSec: 12.8 }
+          { block: blockMap.MORNING, startTransportSec: 4.5, durationSec: this.getBlockDuration(blockMap.MORNING) },
+          { block: blockMap.INTRO, startTransportSec: 4.5 + this.getBlockDuration(blockMap.MORNING), durationSec: 12.8 }
         ];
 
     let maxScheduledEndSec = 0;
@@ -1293,7 +1294,9 @@ export class HyruleSequencer {
         maxScheduledEndSec = blockEndSec;
       }
 
-      if (blockEndSec < viewportStartSec - 1.0 || startTransportSec > viewportEndSec + 1.0) {
+      const isCurrentActiveBlock = (startTransportSec <= currentTransportSec && currentTransportSec < blockEndSec);
+
+      if (!isCurrentActiveBlock && (blockEndSec < viewportStartSec - 1.0 || startTransportSec > viewportEndSec + 1.0)) {
         return;
       }
 
@@ -1307,14 +1310,20 @@ export class HyruleSequencer {
         const barRelSec = barMidiSec - blockStartMidiSec;
         const barAbsSec = startTransportSec + barRelSec;
 
-        if (barAbsSec >= viewportStartSec - 0.5 && barAbsSec <= viewportEndSec + 1.5) {
+        const isCurrentActiveBlockDownbeat = (b === 0 && isCurrentActiveBlock);
+
+        if (isCurrentActiveBlockDownbeat || (barAbsSec >= viewportStartSec - 0.5 && barAbsSec <= viewportEndSec + 1.5)) {
           lines.push({
             transportTime: barAbsSec,
             is8BarBoundary: (b === 0 || b === totalBars),
             barNumber: b,
             cueTitle: b === 0 ? (block.name || block.id.replace(/\s*\(.*\)/, '')) : null,
+            cueFullTitle: b === 0 ? `${block.id} — ${block.name}` : null,
             cueId: b === 0 ? block.id.replace(/\s*\(.*\)/, '') : null,
-            mode: block.mode || 'EXPLORATION'
+            mode: block.mode || 'EXPLORATION',
+            isActiveCue: isCurrentActiveBlock,
+            blockStartSec: startTransportSec,
+            blockEndSec: blockEndSec
           });
         }
       }
@@ -1333,8 +1342,12 @@ export class HyruleSequencer {
             is8BarBoundary: (barCounter % 8 === 0),
             barNumber: barCounter % 8,
             cueTitle: null,
+            cueFullTitle: null,
             cueId: null,
-            mode: 'EXPLORATION'
+            mode: 'EXPLORATION',
+            isActiveCue: false,
+            blockStartSec: 0,
+            blockEndSec: 0
           });
         }
       }
@@ -1355,7 +1368,11 @@ export class HyruleSequencer {
           if (cur.cueId && !prev.cueId) {
             prev.cueId = cur.cueId;
             prev.cueTitle = cur.cueTitle;
+            prev.cueFullTitle = cur.cueFullTitle;
             prev.mode = cur.mode;
+            prev.isActiveCue = cur.isActiveCue;
+            prev.blockStartSec = cur.blockStartSec;
+            prev.blockEndSec = cur.blockEndSec;
           }
         } else {
           deduped.push(cur);
@@ -1796,28 +1813,31 @@ export class HyruleSequencer {
       this.quietBag.reset();
       this.currentModeBlocksRemaining = 1;
 
-      // Startup Sequence:
+      // Startup Sequence with generous runway lead-in:
+      // Starts note visuals on the right side of the visualizer (approx 500px away)
+      const INITIAL_RUNWAY_SEC = 4.5;
+
       // Phrase 0: Morning Sunrise cue (Bars 1–9) with authentic rubato tempo variations (16.867s)
       const block0 = blockMap.MORNING;
       const dur0 = this.getBlockDuration(block0);
       this.currentBlock = block0;
-      this.currentBlockStartTransportSec = 0;
+      this.currentBlockStartTransportSec = INITIAL_RUNWAY_SEC;
       this.currentBlockDurationSec = dur0;
-      currentBlockStartTransportSec = 0;
+      currentBlockStartTransportSec = INITIAL_RUNWAY_SEC;
       currentBlockDurationSec = dur0;
-      this.scheduleNotesForBlock(block0, 0, 0);
+      this.scheduleNotesForBlock(block0, 0, INITIAL_RUNWAY_SEC);
 
       // Phrase 1: Heroic Intro Fanfare (Bars 9–17, 12.8s)
       const block1 = blockMap.INTRO;
       const dur1 = this.getBlockDuration(block1);
       this.upcomingBlock = block1;
-      this.upcomingBlockStartSec = dur0;
-      this.scheduleNotesForBlock(block1, 1, dur0);
+      this.upcomingBlockStartSec = INITIAL_RUNWAY_SEC + dur0;
+      this.scheduleNotesForBlock(block1, 1, INITIAL_RUNWAY_SEC + dur0);
 
       // Synchronize block history for accurate runtime measure lines
       this.blockHistory = [
-        { block: block0, startTransportSec: 0, durationSec: dur0 },
-        { block: block1, startTransportSec: dur0, durationSec: dur1 }
+        { block: block0, startTransportSec: INITIAL_RUNWAY_SEC, durationSec: dur0 },
+        { block: block1, startTransportSec: INITIAL_RUNWAY_SEC + dur0, durationSec: dur1 }
       ];
 
       this.initialSequenceStage = 2; // Next will be Day 1
@@ -1825,7 +1845,7 @@ export class HyruleSequencer {
       // Master phrase downbeat clock: fires at exact conclusion of Morning
       this.boundaryEventId = transport.scheduleOnce((time) => {
         this.onPhraseBoundary(time);
-      }, dur0);
+      }, INITIAL_RUNWAY_SEC + dur0);
 
       transport.start();
     }

@@ -12,13 +12,6 @@ import {
   setMixerParameter,
   setMixerPreset,
   getMixerSettings,
-  toggleLinkMovement,
-  setLinkMovement,
-  getLinkMovementState,
-  playDangerSting,
-  playTowerBell,
-  playWolfosHowl,
-  playPrairieWind,
   setRandomizer,
   toggleRandomizer,
   isRandomizerEnabled,
@@ -29,24 +22,13 @@ import {
 } from './sequencer.js';
 
 document.addEventListener('DOMContentLoaded', () => {
-  const modeButtons = document.querySelectorAll('.pad-btn');
   const playOverlay = document.getElementById('play-overlay');
   const startBtn = document.getElementById('start-btn');
   const startBtnLabel = document.getElementById('start-btn-label');
   const loadingIndicator = document.getElementById('loading-indicator');
-  const cueDisplayEl = document.getElementById('cue-display');
-  const cueSubnameEl = document.getElementById('cue-subname');
-  const cueNextDisplayEl = document.getElementById('cue-next-display');
-  const hudNextTagEl = document.getElementById('hud-next-tag');
-  const cuePendingTextEl = document.getElementById('cue-pending-text');
-  const cueMeasureCounterEl = document.getElementById('cue-measure-counter');
+  const playPauseBtn = document.getElementById('play-pause-btn');
   const canvas = document.getElementById('note-stream-canvas');
   const ctx = canvas ? canvas.getContext('2d') : null;
-
-  // Link Movement Interactive Controls
-  const movementToggleBtn = document.getElementById('movement-toggle-btn');
-  const movementIcon = document.getElementById('movement-icon');
-  const movementBtnText = document.getElementById('movement-btn-text');
 
   // Mixer DOM Elements
   const mixerToggleBtn = document.getElementById('mixer-toggle-btn');
@@ -66,59 +48,32 @@ document.addEventListener('DOMContentLoaded', () => {
   const valStereo = document.getElementById('val-stereo');
   const valVolume = document.getElementById('val-volume');
 
-  // Ambient Environmental SFX Controls
-  const sfxBellBtn = document.getElementById('sfx-bell-btn');
-  const sfxHowlBtn = document.getElementById('sfx-howl-btn');
-  const sfxStingBtn = document.getElementById('sfx-sting-btn');
-  const sfxWindBtn = document.getElementById('sfx-wind-btn');
-  const sfxButtons = [sfxBellBtn, sfxHowlBtn, sfxStingBtn, sfxWindBtn].filter(Boolean);
-
-  function flashBtn(btn) {
-    if (!btn) return;
-    btn.classList.add('flash-active');
-    setTimeout(() => btn.classList.remove('flash-active'), 250);
-  }
-
   let hasStarted = false;
 
   // Random Mode Cycling DOM Elements
-  const randomToggleBtn = document.getElementById('random-toggle-btn') || document.getElementById('cycle-toggle-btn');
-  const randomToggleLabel = document.getElementById('random-toggle-label') || document.getElementById('cycle-toggle-label');
+  const randomToggleBtn = document.getElementById('random-toggle-btn');
 
   // 1. Audio Loading Lifecycle
   whenAudioLoaded()
     .then(() => {
       if (loadingIndicator) {
-        loadingIndicator.innerText = "✓ Ready";
+        loadingIndicator.innerText = "READY";
         loadingIndicator.className = "status-pill ready";
       }
       if (startBtn && !hasStarted) {
         startBtn.disabled = false;
-        if (startBtnLabel) startBtnLabel.innerText = "▶ START ADVENTURE";
+        if (startBtnLabel) startBtnLabel.innerText = "ENTER HYRULE";
         startBtn.classList.add('ready');
       }
     })
     .catch(err => {
       console.error("Error loading soundfont samples:", err);
       if (loadingIndicator) {
-        loadingIndicator.innerText = "❌ Sample Error";
+        loadingIndicator.innerText = "SAMPLE ERROR";
         loadingIndicator.className = "status-pill error";
       }
       if (startBtnLabel) startBtnLabel.innerText = "ERROR LOADING";
     });
-
-  function updateMovementUi(state) {
-    if (!movementToggleBtn) return;
-    if (state === 'RUNNING') {
-      movementToggleBtn.className = 'movement-btn running';
-      if (movementIcon) movementIcon.innerText = '🏃';
-      if (movementBtnText) movementBtnText.innerText = 'LINK RUNNING (FULL MELODY)';
-    } else {
-      movementToggleBtn.className = 'movement-btn idle';
-      if (movementIcon) movementIcon.innerText = '🧍';
-      if (movementBtnText) movementBtnText.innerText = 'LINK STANDING STILL (PASTORAL HARP)';
-    }
-  }
 
   // 2. Play Button Overlay Tap
   if (startBtn) {
@@ -126,7 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (startBtn.disabled || hasStarted) return;
       hasStarted = true;
 
-      // Unlock AudioContext & start sequencer with Morning & Intro cues
+      // Unlock AudioContext & start sequencer with runway lead-in
       await Tone.start();
       await changeGameMode('EXPLORATION');
 
@@ -135,106 +90,51 @@ document.addEventListener('DOMContentLoaded', () => {
         playOverlay.classList.add('fade-out');
         setTimeout(() => {
           playOverlay.style.display = 'none';
-        }, 450);
+        }, 500);
       }
 
-      // Unlock mode buttons, movement button, randomizer button & ambient SFX buttons
-      modeButtons.forEach(btn => (btn.disabled = false));
-      sfxButtons.forEach(btn => (btn.disabled = false));
+      // Unlock header actions
+      if (playPauseBtn) {
+        playPauseBtn.disabled = false;
+        playPauseBtn.innerText = "PAUSE";
+      }
       if (randomToggleBtn) randomToggleBtn.disabled = false;
-      if (movementToggleBtn) {
-        movementToggleBtn.disabled = false;
-        updateMovementUi(getLinkMovementState());
+      if (loadingIndicator) {
+        loadingIndicator.innerText = "PLAYING";
+        loadingIndicator.className = "status-pill ready";
       }
     });
   }
 
-  // 3. Link Movement Button Tap
-  if (movementToggleBtn) {
-    movementToggleBtn.addEventListener('click', () => {
-      if (movementToggleBtn.disabled || !hasStarted) return;
-      const next = toggleLinkMovement();
-      updateMovementUi(next);
+  // 3. Play / Pause Header Control
+  if (playPauseBtn) {
+    playPauseBtn.addEventListener('click', () => {
+      if (!hasStarted) return;
+      const transport = Tone.getTransport();
+      if (transport.state === 'started') {
+        transport.pause();
+        playPauseBtn.innerText = "PLAY";
+        if (loadingIndicator) {
+          loadingIndicator.innerText = "PAUSED";
+          loadingIndicator.className = "status-pill";
+        }
+      } else {
+        transport.start();
+        playPauseBtn.innerText = "PAUSE";
+        if (loadingIndicator) {
+          loadingIndicator.innerText = "PLAYING";
+          loadingIndicator.className = "status-pill ready";
+        }
+      }
     });
   }
 
-  // 4. Ambient Environmental SFX Buttons Tap
-  if (sfxBellBtn) {
-    sfxBellBtn.addEventListener('click', () => {
-      if (sfxBellBtn.disabled || !hasStarted) return;
-      flashBtn(sfxBellBtn);
-      playTowerBell();
-    });
-  }
-  if (sfxHowlBtn) {
-    sfxHowlBtn.addEventListener('click', () => {
-      if (sfxHowlBtn.disabled || !hasStarted) return;
-      flashBtn(sfxHowlBtn);
-      playWolfosHowl();
-    });
-  }
-  if (sfxStingBtn) {
-    sfxStingBtn.addEventListener('click', () => {
-      if (sfxStingBtn.disabled || !hasStarted) return;
-      flashBtn(sfxStingBtn);
-      playDangerSting();
-    });
-  }
-  if (sfxWindBtn) {
-    sfxWindBtn.addEventListener('click', () => {
-      if (sfxWindBtn.disabled || !hasStarted) return;
-      flashBtn(sfxWindBtn);
-      playPrairieWind();
-    });
-  }
-
-  // 5. Keyboard Shortcuts: Space/M for Link Movement, 1/2/3 for Game Modes, B/H/D/W for SFX
-  window.addEventListener('keydown', (e) => {
-    if (!hasStarted) return;
-    const key = e.key.toLowerCase();
-    if (e.code === 'Space' || e.key === ' ' || key === 'm') {
-      e.preventDefault();
-      const next = toggleLinkMovement();
-      updateMovementUi(next);
-    } else if (e.key === '1') {
-      changeGameMode('EXPLORATION');
-      modeButtons.forEach(b => b.classList.remove('active'));
-      const btn = document.querySelector('.day-btn');
-      if (btn) btn.classList.add('active');
-    } else if (e.key === '2') {
-      changeGameMode('QUIET');
-      modeButtons.forEach(b => b.classList.remove('active'));
-      const btn = document.querySelector('.rest-btn') || document.querySelector('.night-btn');
-      if (btn) btn.classList.add('active');
-    } else if (e.key === '3') {
-      changeGameMode('BATTLE');
-      modeButtons.forEach(b => b.classList.remove('active'));
-      const btn = document.querySelector('.battle-btn');
-      if (btn) btn.classList.add('active');
-    } else if (key === 'b') {
-      flashBtn(sfxBellBtn);
-      playTowerBell();
-    } else if (key === 'h') {
-      flashBtn(sfxHowlBtn);
-      playWolfosHowl();
-    } else if (key === 'd') {
-      flashBtn(sfxStingBtn);
-      playDangerSting();
-    } else if (key === 'w') {
-      flashBtn(sfxWindBtn);
-      playPrairieWind();
-    } else if (key === 'r' || key === 'a') {
-      const enabled = toggleRandomizer();
-      updateRandomizerUi(enabled);
-    }
-  });
-
-  // 6. Simple Mode Randomizer Toggle Button Tap
+  // 4. Simple Mode Randomizer Toggle Button Tap
   function updateRandomizerUi(enabled) {
     if (randomToggleBtn) {
       randomToggleBtn.classList.toggle('active', enabled);
       randomToggleBtn.classList.toggle('inactive', !enabled);
-      if (randomToggleLabel) randomToggleLabel.innerText = enabled ? "RANDOM: ON" : "RANDOM: OFF";
+      randomToggleBtn.innerText = enabled ? "RANDOM: ON" : "RANDOM: OFF";
     }
   }
 
@@ -245,19 +145,17 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 7. Handle Mode Button Clicks
-  modeButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (btn.disabled || !hasStarted) return;
-      const selectedMode = btn.getAttribute('data-mode');
-
-      // Signal mode change to sequencer
-      changeGameMode(selectedMode);
-
-      // Refresh button active highlights
-      modeButtons.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-    });
+  // 5. Keyboard Shortcuts: Space for Play/Pause, R for Random Mode
+  window.addEventListener('keydown', (e) => {
+    if (!hasStarted) return;
+    const key = e.key.toLowerCase();
+    if (e.code === 'Space' || e.key === ' ') {
+      e.preventDefault();
+      if (playPauseBtn) playPauseBtn.click();
+    } else if (key === 'r') {
+      const enabled = toggleRandomizer();
+      updateRandomizerUi(enabled);
+    }
   });
 
   // 4. Mixer Drawer Toggle & Controls
@@ -380,35 +278,38 @@ document.addEventListener('DOMContentLoaded', () => {
   // -------------------------------------------------------------
   // CONTINUOUS RIGHT-TO-LEFT STREAMING NOTE VISUALIZER (CANVAS)
   // -------------------------------------------------------------
-  const PLAYHEAD_X = 64; // Compact playhead X position for mobile
+  const PLAYHEAD_X = 64; // Playhead X anchor
   const PIXELS_PER_SEC = 112; // Expanded conveyor rate for horizontal breathing room between fast notes
 
-  let cachedCanvasWidth = 600;
-  const cachedCanvasHeight = 300; // Expanded to 300px for generous vertical spacing
+  let cachedCanvasWidth = 800;
+  const cachedCanvasHeight = 300; // 300px height for uncrowded multi-track separation
 
-  // Setup HiDPI Canvas Scaling (cached dimensions eliminate per-frame getBoundingClientRect)
+  // Setup HiDPI Canvas Scaling (spans full viewport width in any orientation)
   function setupCanvasDPI() {
     if (!canvas || !ctx) return;
     const dpr = window.devicePixelRatio || 1;
-    cachedCanvasWidth = canvas.clientWidth || 600;
+    cachedCanvasWidth = canvas.clientWidth || window.innerWidth || 800;
 
-    canvas.width = cachedCanvasWidth * dpr;
-    canvas.height = cachedCanvasHeight * dpr;
+    canvas.width = Math.round(cachedCanvasWidth * dpr);
+    canvas.height = Math.round(cachedCanvasHeight * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   window.addEventListener('resize', setupCanvasDPI);
+  window.addEventListener('orientationchange', () => {
+    setTimeout(setupCanvasDPI, 50);
+  });
   setupCanvasDPI();
 
-  // Lane geometry definitions (expanded 300px height with spacious dedicated tracks)
+  // Lane geometry definitions (spacious 300px height with dedicated header clearance for sticky titles)
   const LANES = {
-    melody: { top: 22, bottom: 82, height: 60, label: 'MELODY' },
-    harmony: { top: 88, bottom: 172, height: 84, label: 'HARMONY' },
-    bass: { top: 178, bottom: 236, height: 58, label: 'BASS' },
-    percussion: { top: 242, bottom: 294, height: 52, label: 'PERC' }
+    melody: { top: 28, bottom: 88, height: 60, label: 'MELODY' },
+    harmony: { top: 94, bottom: 176, height: 82, label: 'HARMONY' },
+    bass: { top: 182, bottom: 238, height: 56, label: 'BASS' },
+    percussion: { top: 244, bottom: 294, height: 50, label: 'PERC' }
   };
 
-  // Static color table: eliminates ~24,000 per-second object allocations in the render loop
+  // Static color table: eliminates per-frame object allocations
   const NOTE_COLORS = {
     melody: {
       EXPLORATION: { fill: '#4ade80', stroke: '#86efac', glow: 'rgba(74, 222, 128, 0.55)', hit: '#ffffff' },
@@ -444,7 +345,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (track === 'melody') {
       const lane = LANES.melody;
-      // Map MIDI pitch range [48 (C3) to 96 (C7)]
       const minMidi = 48;
       const maxMidi = 96;
       const norm = Math.max(0, Math.min(1, (note.midi - minMidi) / (maxMidi - minMidi)));
@@ -455,7 +355,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (track === 'harmony') {
       const lane = LANES.harmony;
-      // Map MIDI pitch range [36 (C2) to 96 (C7)] - provides generous vertical separation for multi-voice chords
       const minMidi = 36;
       const maxMidi = 96;
       const norm = Math.max(0, Math.min(1, (note.midi - minMidi) / (maxMidi - minMidi)));
@@ -466,7 +365,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (track === 'bass') {
       const lane = LANES.bass;
-      // Map MIDI pitch range [30 (F#1) to 66 (F#4)] - tight range gives responsive pitch movement
       const minMidi = 30;
       const maxMidi = 66;
       const norm = Math.max(0, Math.min(1, (note.midi - minMidi) / (maxMidi - minMidi)));
@@ -475,27 +373,27 @@ document.addEventListener('DOMContentLoaded', () => {
       return { y: noteY, h: noteH };
     }
 
-    // Percussion: dedicated 4 vertical tiers in 52px lane so drum voices never overlap
+    // Percussion: dedicated 4 vertical tiers so drum hits never overlap
     const lane = LANES.percussion;
     const pitch = note.midi;
-    let noteY = lane.bottom - 12;
+    let noteY = lane.bottom - 11;
     let noteH = 7;
 
     if (pitch === 42 || pitch === 44 || pitch === 46) {
       // Hi-hat tier (top)
-      noteY = lane.top + 7;
+      noteY = lane.top + 6;
       noteH = 4.5;
     } else if (pitch === 38 || pitch === 43) {
       // Snare / Rim tier (mid-upper)
-      noteY = lane.top + 19;
+      noteY = lane.top + 18;
       noteH = 6;
     } else if (pitch === 30 || pitch === 31 || pitch === 32 || pitch === 33 || pitch === 34 || pitch === 35) {
       // Toms / Timpani tier (mid-lower)
-      noteY = lane.top + 31;
+      noteY = lane.top + 29;
       noteH = 6.5;
     } else {
       // Kick drum / Main Bass Beat tier (bottom, pitch 36 or 40)
-      noteY = lane.bottom - 13;
+      noteY = lane.bottom - 11;
       noteH = 7.5;
     }
 
@@ -507,8 +405,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const transport = Tone.getTransport();
     const isPlaying = transport && (transport.state === 'started' || transport.state === 'running');
 
-    // Audio-to-Visual Latency Sync Compensation:
-    // Aligns the visual note hit on PLAYHEAD_X with the exact physical sound from speakers
+    // Audio-to-Visual Latency Sync Compensation
     let visualizerSec = 0;
     if (isPlaying) {
       const rawCtx = Tone.getContext().rawContext;
@@ -520,10 +417,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const cueInfo = getActiveCueInfo();
 
-    // 1. Update UI Status & Cue Information Display (Zero Layout Shift)
-    updateUIElements(cueInfo, isPlaying);
-
-    // 2. Draw Note Stream Canvas
+    // Draw Note Stream Canvas
     if (canvas && ctx) {
       const cssWidth = cachedCanvasWidth;
       const cssHeight = cachedCanvasHeight;
@@ -612,27 +506,31 @@ document.addEventListener('DOMContentLoaded', () => {
   function drawCanvasBackground(ctx, width, height, currentTransportSec) {
     // 1. Draw Lane Backdrops & Dividers
     Object.values(LANES).forEach((lane, idx) => {
-      ctx.fillStyle = idx % 2 === 0 ? 'rgba(255, 255, 255, 0.015)' : 'rgba(0, 0, 0, 0.15)';
+      ctx.fillStyle = idx % 2 === 0 ? 'rgba(255, 255, 255, 0.012)' : 'rgba(0, 0, 0, 0.12)';
       ctx.fillRect(0, lane.top, width, lane.height);
 
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.07)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(0, lane.bottom);
       ctx.lineTo(width, lane.bottom);
       ctx.stroke();
 
-      ctx.fillStyle = 'rgba(148, 163, 184, 0.4)';
-      ctx.font = '8px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-      ctx.fillText(lane.label, 8, lane.top + 11);
+      ctx.fillStyle = 'rgba(148, 163, 184, 0.35)';
+      ctx.font = '600 9px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      ctx.fillText(lane.label, 24, lane.top + 12);
     });
 
-    // 2. Measure / Bar Grid Lines scrolling right-to-left (calculated dynamically at runtime from actual music timing)
+    // 2. Measure / Bar Grid Lines
     const viewportStartSec = currentTransportSec - (PLAYHEAD_X / PIXELS_PER_SEC);
     const viewportEndSec = currentTransportSec + ((width - PLAYHEAD_X) / PIXELS_PER_SEC);
     const measureLines = getMeasureLines(viewportStartSec, viewportEndSec);
 
+    const STICKY_LEFT = 24; // Left anchor inside 20px edge blur
+
     ctx.save();
+
+    // Pass A: Vertical Measure Lines
     for (let i = 0; i < measureLines.length; i++) {
       const line = measureLines[i];
       const barX = PLAYHEAD_X + (line.transportTime - currentTransportSec) * PIXELS_PER_SEC;
@@ -643,66 +541,95 @@ document.addEventListener('DOMContentLoaded', () => {
           const modeLineColor = (mode === 'BATTLE')
             ? 'rgba(239, 68, 68, 0.45)'
             : (mode === 'QUIET' ? 'rgba(56, 189, 248, 0.45)' : 'rgba(74, 222, 128, 0.45)');
-          const modeTextColor = (mode === 'BATTLE')
-            ? '#fca5a5'
-            : (mode === 'QUIET' ? '#bae6fd' : '#bbf7d0');
-          const modeBgColor = (mode === 'BATTLE')
-            ? 'rgba(239, 68, 68, 0.25)'
-            : (mode === 'QUIET' ? 'rgba(56, 189, 248, 0.25)' : 'rgba(74, 222, 128, 0.25)');
-          const modeIcon = (mode === 'BATTLE') ? '⚔️' : (mode === 'QUIET' ? '🌿' : '☀️');
 
           ctx.strokeStyle = modeLineColor;
           ctx.lineWidth = 1.5;
           ctx.setLineDash([]);
           ctx.beginPath();
-          ctx.moveTo(barX, 19);
+          ctx.moveTo(barX, 28);
           ctx.lineTo(barX, height);
           ctx.stroke();
-
-          // Milestone cue banner pill at top (Y: 3 to 17)
-          if (line.cueId) {
-            const labelText = `${modeIcon} ${line.cueId.toUpperCase()}`;
-            ctx.font = 'bold 8px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-            const textWidth = ctx.measureText(labelText).width;
-            const pillW = textWidth + 10;
-            const pillH = 14;
-            const pillX = Math.max(2, barX - pillW / 2);
-            const pillY = 3;
-
-            ctx.fillStyle = modeBgColor;
-            ctx.strokeStyle = modeLineColor;
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            if (typeof ctx.roundRect === 'function') {
-              ctx.roundRect(pillX, pillY, pillW, pillH, 4);
-            } else {
-              ctx.rect(pillX, pillY, pillW, pillH);
-            }
-            ctx.fill();
-            ctx.stroke();
-
-            ctx.fillStyle = modeTextColor;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(labelText, pillX + pillW / 2, pillY + pillH / 2 + 0.5);
-            ctx.textAlign = 'start';
-            ctx.textBaseline = 'alphabetic';
-          } else {
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-            ctx.font = '7.5px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-            ctx.fillText('8-BAR', barX + 3, 13);
-          }
         } else {
           ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
           ctx.lineWidth = 1;
           ctx.setLineDash([2, 3]);
           ctx.beginPath();
-          ctx.moveTo(barX, 0);
+          ctx.moveTo(barX, 28);
           ctx.lineTo(barX, height);
           ctx.stroke();
         }
       }
     }
+
+    // Pass B: Sticky 8-Bar Cue Titles with full title & increased font sizing
+    const cueLinesToRender = [];
+    for (let i = 0; i < measureLines.length; i++) {
+      const line = measureLines[i];
+      if (line.is8BarBoundary && (line.cueFullTitle || line.cueTitle || line.cueId)) {
+        const barX = PLAYHEAD_X + (line.transportTime - currentTransportSec) * PIXELS_PER_SEC;
+        cueLinesToRender.push({ line, barX });
+      }
+    }
+
+    cueLinesToRender.sort((a, b) => a.line.transportTime - b.line.transportTime);
+
+    for (let i = 0; i < cueLinesToRender.length; i++) {
+      const item = cueLinesToRender[i];
+      const line = item.line;
+      const barX = item.barX;
+      const fullTitle = line.cueFullTitle || (line.cueId ? `${line.cueId} — ${line.cueTitle || ''}` : line.cueTitle);
+
+      const mode = line.mode || 'EXPLORATION';
+      const modeTextColor = (mode === 'BATTLE')
+        ? '#fca5a5'
+        : (mode === 'QUIET' ? '#93c5fd' : '#86efac');
+      const modeBgColor = (mode === 'BATTLE')
+        ? 'rgba(153, 27, 27, 0.45)'
+        : (mode === 'QUIET' ? 'rgba(30, 58, 138, 0.45)' : 'rgba(20, 83, 45, 0.45)');
+      const modeBorderColor = (mode === 'BATTLE')
+        ? 'rgba(239, 68, 68, 0.5)'
+        : (mode === 'QUIET' ? 'rgba(56, 189, 248, 0.5)' : 'rgba(74, 222, 128, 0.5)');
+
+      ctx.font = '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      const textWidth = ctx.measureText(fullTitle).width;
+      const pillW = textWidth + 20;
+      const pillH = 22;
+      const pillY = 4;
+
+      let pillX = barX - 10;
+
+      // Stickiness to the left side:
+      // While active (or once past the sticky anchor), stays pinned at STICKY_LEFT
+      if (line.isActiveCue || barX <= STICKY_LEFT) {
+        pillX = STICKY_LEFT;
+
+        // Smooth push-off as next 8-bar cue line approaches
+        const nextItem = cueLinesToRender[i + 1];
+        if (nextItem && nextItem.barX < STICKY_LEFT + pillW + 16) {
+          pillX = nextItem.barX - pillW - 16;
+        }
+      }
+
+      if (pillX + pillW >= 0 && pillX <= width + 50) {
+        ctx.fillStyle = modeBgColor;
+        ctx.strokeStyle = modeBorderColor;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        if (typeof ctx.roundRect === 'function') {
+          ctx.roundRect(pillX, pillY, pillW, pillH, 5);
+        } else {
+          ctx.rect(pillX, pillY, pillW, pillH);
+        }
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = modeTextColor;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(fullTitle, pillX + 10, pillY + pillH / 2 + 0.5);
+      }
+    }
+
     ctx.restore();
   }
 
@@ -723,16 +650,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     ctx.beginPath();
-    ctx.moveTo(PLAYHEAD_X, 0);
+    ctx.moveTo(PLAYHEAD_X, 28);
     ctx.lineTo(PLAYHEAD_X, height);
     ctx.stroke();
 
-    // Playhead top marker
+    // Playhead top marker at Y=28
     ctx.fillStyle = isHitting ? '#ffffff' : hitColor;
     ctx.beginPath();
-    ctx.moveTo(PLAYHEAD_X - 5, 0);
-    ctx.lineTo(PLAYHEAD_X + 5, 0);
-    ctx.lineTo(PLAYHEAD_X, 7);
+    ctx.moveTo(PLAYHEAD_X - 5, 28);
+    ctx.lineTo(PLAYHEAD_X + 5, 28);
+    ctx.lineTo(PLAYHEAD_X, 34);
     ctx.closePath();
     ctx.fill();
 
@@ -741,150 +668,13 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
       const sparkR = Math.min(3.5, 1.2 + intensity);
       ctx.beginPath();
-      ctx.arc(PLAYHEAD_X, height * 0.22, sparkR, 0, Math.PI * 2);
-      ctx.arc(PLAYHEAD_X, height * 0.45, sparkR * 0.85, 0, Math.PI * 2);
-      ctx.arc(PLAYHEAD_X, height * 0.72, sparkR * 1.1, 0, Math.PI * 2);
+      ctx.arc(PLAYHEAD_X, height * 0.28, sparkR, 0, Math.PI * 2);
+      ctx.arc(PLAYHEAD_X, height * 0.52, sparkR * 0.85, 0, Math.PI * 2);
+      ctx.arc(PLAYHEAD_X, height * 0.78, sparkR * 1.1, 0, Math.PI * 2);
       ctx.fill();
     }
 
     ctx.restore();
-  }
-
-  let lastCueText = '';
-  let lastCueClass = '';
-  let lastSubname = '';
-  let lastPendingDisplay = '';
-  let lastPendingText = '';
-  let lastNextText = '';
-  let lastNextClass = '';
-  let lastNextTagText = '';
-  let lastNextTagClass = '';
-  let lastCounterText = '';
-
-  function updateUIElements(cueInfo, isPlaying) {
-    // 1. Active 8-Bar Cue ID display
-    if (cueDisplayEl) {
-      const modeIcon = (cueInfo.cueMode === 'BATTLE')
-        ? '⚔️'
-        : (cueInfo.cueMode === 'QUIET' ? '🌿' : '☀️');
-      const cueText = `${modeIcon} ${cueInfo.cueId}`;
-      if (cueText !== lastCueText) {
-        cueDisplayEl.innerText = cueText;
-        lastCueText = cueText;
-      }
-
-      const cueClass = (cueInfo.cueMode === 'BATTLE')
-        ? "hud-title mode-battle"
-        : (cueInfo.cueMode === 'QUIET' ? "hud-title mode-quiet" : "hud-title mode-exploration");
-      if (cueClass !== lastCueClass) {
-        cueDisplayEl.className = cueClass;
-        lastCueClass = cueClass;
-      }
-    }
-
-    // 2. Motif name & inline transition queue status (Zero Layout Shift)
-    if (cueSubnameEl) {
-      const subname = cueInfo.cueName || "Hyrule Overworld";
-      if (subname !== lastSubname) {
-        cueSubnameEl.innerText = subname;
-        lastSubname = subname;
-      }
-    }
-
-    if (cuePendingTextEl) {
-      if (cueInfo.pendingMode) {
-        const modeLabel = (cueInfo.pendingMode === 'BATTLE')
-          ? 'Battle'
-          : (cueInfo.pendingMode === 'QUIET' ? 'Rest' : 'Adventure');
-        const pText = ` • ⏳ Queued: ${modeLabel} (Bar 8 Downbeat)`;
-        if (lastPendingDisplay !== 'inline') {
-          cuePendingTextEl.style.display = 'inline';
-          lastPendingDisplay = 'inline';
-        }
-        if (pText !== lastPendingText) {
-          cuePendingTextEl.innerText = pText;
-          lastPendingText = pText;
-        }
-      } else {
-        if (lastPendingDisplay !== 'none') {
-          cuePendingTextEl.style.display = 'none';
-          lastPendingDisplay = 'none';
-        }
-      }
-    }
-
-    // 3. Next Queued 8-Bar Cue ID display
-    if (cueNextDisplayEl) {
-      if (cueInfo.upcomingCueId) {
-        const nextIcon = (cueInfo.upcomingCueMode === 'BATTLE')
-          ? '⚔️'
-          : (cueInfo.upcomingCueMode === 'QUIET' ? '🌿' : '☀️');
-        const nextText = `${nextIcon} ${cueInfo.upcomingCueId.replace(/\s*\(Bars.*?\)/, '')}`;
-        if (nextText !== lastNextText) {
-          cueNextDisplayEl.innerText = nextText;
-          lastNextText = nextText;
-        }
-
-        const nextClass = (cueInfo.upcomingCueMode === 'BATTLE')
-          ? "hud-title next-title mode-battle"
-          : (cueInfo.upcomingCueMode === 'QUIET' ? "hud-title next-title mode-quiet" : "hud-title next-title mode-exploration");
-        if (nextClass !== lastNextClass) {
-          cueNextDisplayEl.className = nextClass;
-          lastNextClass = nextClass;
-        }
-      } else {
-        if (lastNextText !== '--') {
-          cueNextDisplayEl.innerText = '--';
-          lastNextText = '--';
-        }
-      }
-    }
-
-    // 4. Next Tag / Queued Tag state
-    if (hudNextTagEl) {
-      if (cueInfo.pendingMode) {
-        if (lastNextTagText !== 'QUEUED') {
-          hudNextTagEl.innerText = 'QUEUED';
-          lastNextTagText = 'QUEUED';
-        }
-        if (lastNextTagClass !== 'hud-tag queued') {
-          hudNextTagEl.className = 'hud-tag queued';
-          lastNextTagClass = 'hud-tag queued';
-        }
-      } else {
-        if (lastNextTagText !== 'NEXT') {
-          hudNextTagEl.innerText = 'NEXT';
-          lastNextTagText = 'NEXT';
-        }
-        if (lastNextTagClass !== 'hud-tag muted') {
-          hudNextTagEl.className = 'hud-tag muted';
-          lastNextTagClass = 'hud-tag muted';
-        }
-      }
-    }
-
-    // 5. Measure Counter within 8-bar block (Updates synchronously from accurate musical bar)
-    if (cueMeasureCounterEl) {
-      let counterText = "Ready";
-      if (isPlaying) {
-        const curBar = cueInfo.currentBarInBlock || 1;
-        const totalBars = cueInfo.totalBarsInBlock || 8;
-        counterText = `Bar ${curBar}/${totalBars}`;
-      }
-      if (counterText !== lastCounterText) {
-        cueMeasureCounterEl.innerText = counterText;
-        lastCounterText = counterText;
-      }
-    }
-
-    // 6. Sync controller mode buttons (Adventure, Rest, Battle) with current playing mode
-    if (isPlaying) {
-      const curMode = cueInfo.currentMode;
-      modeButtons.forEach(b => {
-        const m = b.getAttribute('data-mode');
-        b.classList.toggle('active', m === curMode);
-      });
-    }
   }
 
   // Start the 60 FPS animation loop
