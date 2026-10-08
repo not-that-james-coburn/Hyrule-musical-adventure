@@ -1311,7 +1311,10 @@ export class HyruleSequencer {
           lines.push({
             transportTime: barAbsSec,
             is8BarBoundary: (b === 0 || b === totalBars),
-            barNumber: b
+            barNumber: b,
+            cueTitle: b === 0 ? (block.name || block.id.replace(/\s*\(.*\)/, '')) : null,
+            cueId: b === 0 ? block.id.replace(/\s*\(.*\)/, '') : null,
+            mode: block.mode || 'EXPLORATION'
           });
         }
       }
@@ -1328,7 +1331,10 @@ export class HyruleSequencer {
           lines.push({
             transportTime: t,
             is8BarBoundary: (barCounter % 8 === 0),
-            barNumber: barCounter % 8
+            barNumber: barCounter % 8,
+            cueTitle: null,
+            cueId: null,
+            mode: 'EXPLORATION'
           });
         }
       }
@@ -1346,6 +1352,11 @@ export class HyruleSequencer {
         const prev = deduped[deduped.length - 1];
         if (Math.abs(cur.transportTime - prev.transportTime) < 0.035) {
           if (cur.is8BarBoundary) prev.is8BarBoundary = true;
+          if (cur.cueId && !prev.cueId) {
+            prev.cueId = cur.cueId;
+            prev.cueTitle = cur.cueTitle;
+            prev.mode = cur.mode;
+          }
         } else {
           deduped.push(cur);
         }

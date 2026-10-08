@@ -381,10 +381,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // CONTINUOUS RIGHT-TO-LEFT STREAMING NOTE VISUALIZER (CANVAS)
   // -------------------------------------------------------------
   const PLAYHEAD_X = 64; // Compact playhead X position for mobile
-  const PIXELS_PER_SEC = 100; // Conveyor rate
+  const PIXELS_PER_SEC = 112; // Expanded conveyor rate for horizontal breathing room between fast notes
 
   let cachedCanvasWidth = 600;
-  const cachedCanvasHeight = 225;
+  const cachedCanvasHeight = 300; // Expanded to 300px for generous vertical spacing
 
   // Setup HiDPI Canvas Scaling (cached dimensions eliminate per-frame getBoundingClientRect)
   function setupCanvasDPI() {
@@ -400,12 +400,12 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('resize', setupCanvasDPI);
   setupCanvasDPI();
 
-  // Lane geometry definitions (expanded 225px height with dedicated Harmony track)
+  // Lane geometry definitions (expanded 300px height with spacious dedicated tracks)
   const LANES = {
-    melody: { top: 14, bottom: 64, height: 50, label: 'MELODY' },
-    harmony: { top: 68, bottom: 118, height: 50, label: 'HARMONY' },
-    bass: { top: 122, bottom: 168, height: 46, label: 'BASS' },
-    percussion: { top: 172, bottom: 218, height: 46, label: 'PERC' }
+    melody: { top: 22, bottom: 82, height: 60, label: 'MELODY' },
+    harmony: { top: 88, bottom: 172, height: 84, label: 'HARMONY' },
+    bass: { top: 178, bottom: 236, height: 58, label: 'BASS' },
+    percussion: { top: 242, bottom: 294, height: 52, label: 'PERC' }
   };
 
   // Static color table: eliminates ~24,000 per-second object allocations in the render loop
@@ -448,55 +448,55 @@ document.addEventListener('DOMContentLoaded', () => {
       const minMidi = 48;
       const maxMidi = 96;
       const norm = Math.max(0, Math.min(1, (note.midi - minMidi) / (maxMidi - minMidi)));
-      const noteH = 5;
-      const noteY = (lane.bottom - 3) - norm * (lane.height - 10) - noteH;
+      const noteH = 5.5;
+      const noteY = (lane.bottom - 4) - norm * (lane.height - 12) - noteH;
       return { y: noteY, h: noteH };
     }
 
     if (track === 'harmony') {
       const lane = LANES.harmony;
-      // Map MIDI pitch range [40 (E2) to 90 (F#6)]
-      const minMidi = 40;
-      const maxMidi = 90;
+      // Map MIDI pitch range [36 (C2) to 96 (C7)] - provides generous vertical separation for multi-voice chords
+      const minMidi = 36;
+      const maxMidi = 96;
       const norm = Math.max(0, Math.min(1, (note.midi - minMidi) / (maxMidi - minMidi)));
-      const noteH = 5;
-      const noteY = (lane.bottom - 3) - norm * (lane.height - 10) - noteH;
+      const noteH = 5.5;
+      const noteY = (lane.bottom - 4) - norm * (lane.height - 13) - noteH;
       return { y: noteY, h: noteH };
     }
 
     if (track === 'bass') {
       const lane = LANES.bass;
-      // Map MIDI pitch range [28 (E1) to 60 (C4)]
-      const minMidi = 28;
-      const maxMidi = 60;
+      // Map MIDI pitch range [30 (F#1) to 66 (F#4)] - tight range gives responsive pitch movement
+      const minMidi = 30;
+      const maxMidi = 66;
       const norm = Math.max(0, Math.min(1, (note.midi - minMidi) / (maxMidi - minMidi)));
       const noteH = 6;
-      const noteY = (lane.bottom - 3) - norm * (lane.height - 11) - noteH;
+      const noteY = (lane.bottom - 4) - norm * (lane.height - 13) - noteH;
       return { y: noteY, h: noteH };
     }
 
-    // Percussion
+    // Percussion: dedicated 4 vertical tiers in 52px lane so drum voices never overlap
     const lane = LANES.percussion;
     const pitch = note.midi;
     let noteY = lane.bottom - 12;
     let noteH = 7;
 
-    if (pitch === 35 || pitch === 36 || pitch === 40) {
-      // Kick drum / Main Snare
-      noteY = lane.bottom - 10;
-      noteH = 7;
+    if (pitch === 42 || pitch === 44 || pitch === 46) {
+      // Hi-hat tier (top)
+      noteY = lane.top + 7;
+      noteH = 4.5;
     } else if (pitch === 38 || pitch === 43) {
-      // Snare / Rim
-      noteY = lane.top + 16;
+      // Snare / Rim tier (mid-upper)
+      noteY = lane.top + 19;
       noteH = 6;
-    } else if (pitch === 42 || pitch === 44 || pitch === 46) {
-      // Hi-hat
-      noteY = lane.top + 4;
-      noteH = 4;
+    } else if (pitch === 30 || pitch === 31 || pitch === 32 || pitch === 33 || pitch === 34 || pitch === 35) {
+      // Toms / Timpani tier (mid-lower)
+      noteY = lane.top + 31;
+      noteH = 6.5;
     } else {
-      // Toms / Timpani
-      noteY = lane.top + 10;
-      noteH = 6;
+      // Kick drum / Main Bass Beat tier (bottom, pitch 36 or 40)
+      noteY = lane.bottom - 13;
+      noteH = 7.5;
     }
 
     return { y: noteY, h: noteH };
@@ -538,6 +538,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Draw streaming notes traveling right to left
       const streamNotes = getStreamNotes();
       let activeNotesHitCount = 0;
+      let activeHitVelocitySum = 0;
 
       for (let i = 0; i < streamNotes.length; i++) {
         const note = streamNotes[i];
@@ -551,6 +552,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const { y, h } = getNoteYAndHeight(note);
         const colors = getNoteColors(note);
+        const vel = (typeof note.velocity === 'number') ? Math.max(0.1, Math.min(1.0, note.velocity)) : 0.8;
 
         const isPercMuted = (note.trackType === 'percussion' && cueInfo.currentMode === 'QUIET');
 
@@ -561,12 +563,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isCurrentlyPlaying) {
           activeNotesHitCount++;
+          activeHitVelocitySum += vel;
         }
 
-        let alpha = 1.0;
+        let alpha = 0.65 + 0.35 * vel;
         // Alpha fade out as notes pass playhead towards left margin
         if (noteX < PLAYHEAD_X) {
-          alpha = Math.max(0.12, (noteX + noteW) / (PLAYHEAD_X + noteW));
+          alpha *= Math.max(0.12, (noteX + noteW) / (PLAYHEAD_X + noteW));
         }
 
         // When in Rest mode, percussion is muted: render faint ghost notes
@@ -579,6 +582,13 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.strokeStyle = colors.stroke;
         ctx.lineWidth = 1;
 
+        if (vel >= 0.85) {
+          ctx.shadowColor = colors.glow;
+          ctx.shadowBlur = (vel - 0.7) * 15;
+        } else {
+          ctx.shadowBlur = 0;
+        }
+
         ctx.beginPath();
         if (typeof ctx.roundRect === 'function') {
           ctx.roundRect(noteX, y, noteW, h, 2.5);
@@ -589,10 +599,11 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.stroke();
       }
 
+      ctx.shadowBlur = 0;
       ctx.globalAlpha = 1.0;
 
       // Draw Playhead line and active collision sparks
-      drawPlayhead(ctx, cssHeight, activeNotesHitCount > 0, cueInfo);
+      drawPlayhead(ctx, cssHeight, activeNotesHitCount > 0, cueInfo, activeHitVelocitySum);
     }
 
     requestAnimationFrame(renderVisualizer);
@@ -613,7 +624,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       ctx.fillStyle = 'rgba(148, 163, 184, 0.4)';
       ctx.font = '8px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-      ctx.fillText(lane.label, 8, lane.top + 10);
+      ctx.fillText(lane.label, 8, lane.top + 11);
     });
 
     // 2. Measure / Bar Grid Lines scrolling right-to-left (calculated dynamically at runtime from actual music timing)
@@ -626,24 +637,68 @@ document.addEventListener('DOMContentLoaded', () => {
       const line = measureLines[i];
       const barX = PLAYHEAD_X + (line.transportTime - currentTransportSec) * PIXELS_PER_SEC;
 
-      if (barX >= 0 && barX <= width + 40) {
-        ctx.beginPath();
-        ctx.moveTo(barX, 0);
-        ctx.lineTo(barX, height);
-
+      if (barX >= 0 && barX <= width + 50) {
         if (line.is8BarBoundary) {
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+          const mode = line.mode || 'EXPLORATION';
+          const modeLineColor = (mode === 'BATTLE')
+            ? 'rgba(239, 68, 68, 0.45)'
+            : (mode === 'QUIET' ? 'rgba(56, 189, 248, 0.45)' : 'rgba(74, 222, 128, 0.45)');
+          const modeTextColor = (mode === 'BATTLE')
+            ? '#fca5a5'
+            : (mode === 'QUIET' ? '#bae6fd' : '#bbf7d0');
+          const modeBgColor = (mode === 'BATTLE')
+            ? 'rgba(239, 68, 68, 0.25)'
+            : (mode === 'QUIET' ? 'rgba(56, 189, 248, 0.25)' : 'rgba(74, 222, 128, 0.25)');
+          const modeIcon = (mode === 'BATTLE') ? '⚔️' : (mode === 'QUIET' ? '🌿' : '☀️');
+
+          ctx.strokeStyle = modeLineColor;
           ctx.lineWidth = 1.5;
           ctx.setLineDash([]);
+          ctx.beginPath();
+          ctx.moveTo(barX, 19);
+          ctx.lineTo(barX, height);
           ctx.stroke();
 
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-          ctx.font = '7.5px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-          ctx.fillText('8-BAR', barX + 3, 11);
+          // Milestone cue banner pill at top (Y: 3 to 17)
+          if (line.cueId) {
+            const labelText = `${modeIcon} ${line.cueId.toUpperCase()}`;
+            ctx.font = 'bold 8px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+            const textWidth = ctx.measureText(labelText).width;
+            const pillW = textWidth + 10;
+            const pillH = 14;
+            const pillX = Math.max(2, barX - pillW / 2);
+            const pillY = 3;
+
+            ctx.fillStyle = modeBgColor;
+            ctx.strokeStyle = modeLineColor;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            if (typeof ctx.roundRect === 'function') {
+              ctx.roundRect(pillX, pillY, pillW, pillH, 4);
+            } else {
+              ctx.rect(pillX, pillY, pillW, pillH);
+            }
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = modeTextColor;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(labelText, pillX + pillW / 2, pillY + pillH / 2 + 0.5);
+            ctx.textAlign = 'start';
+            ctx.textBaseline = 'alphabetic';
+          } else {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.font = '7.5px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+            ctx.fillText('8-BAR', barX + 3, 13);
+          }
         } else {
           ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
           ctx.lineWidth = 1;
           ctx.setLineDash([2, 3]);
+          ctx.beginPath();
+          ctx.moveTo(barX, 0);
+          ctx.lineTo(barX, height);
           ctx.stroke();
         }
       }
@@ -651,19 +706,20 @@ document.addEventListener('DOMContentLoaded', () => {
     ctx.restore();
   }
 
-  function drawPlayhead(ctx, height, isHitting, cueInfo) {
+  function drawPlayhead(ctx, height, isHitting, cueInfo, activeHitVelocitySum = 0) {
     ctx.save();
 
     const hitColor = (cueInfo.cueMode === 'BATTLE')
       ? '#ef4444'
       : (cueInfo.cueMode === 'QUIET' ? '#38bdf8' : '#4ade80');
 
+    const intensity = Math.min(2.5, 0.8 + (activeHitVelocitySum * 0.4));
     ctx.strokeStyle = isHitting ? '#ffffff' : hitColor;
-    ctx.lineWidth = isHitting ? 2 : 1.5;
+    ctx.lineWidth = isHitting ? (1.5 + intensity * 0.8) : 1.5;
 
     if (isHitting) {
       ctx.shadowColor = hitColor;
-      ctx.shadowBlur = 10;
+      ctx.shadowBlur = 8 * intensity;
     }
 
     ctx.beginPath();
@@ -674,11 +730,22 @@ document.addEventListener('DOMContentLoaded', () => {
     // Playhead top marker
     ctx.fillStyle = isHitting ? '#ffffff' : hitColor;
     ctx.beginPath();
-    ctx.moveTo(PLAYHEAD_X - 4, 0);
-    ctx.lineTo(PLAYHEAD_X + 4, 0);
-    ctx.lineTo(PLAYHEAD_X, 6);
+    ctx.moveTo(PLAYHEAD_X - 5, 0);
+    ctx.lineTo(PLAYHEAD_X + 5, 0);
+    ctx.lineTo(PLAYHEAD_X, 7);
     ctx.closePath();
     ctx.fill();
+
+    // Dynamic collision sparks on active note impact
+    if (isHitting) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      const sparkR = Math.min(3.5, 1.2 + intensity);
+      ctx.beginPath();
+      ctx.arc(PLAYHEAD_X, height * 0.22, sparkR, 0, Math.PI * 2);
+      ctx.arc(PLAYHEAD_X, height * 0.45, sparkR * 0.85, 0, Math.PI * 2);
+      ctx.arc(PLAYHEAD_X, height * 0.72, sparkR * 1.1, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     ctx.restore();
   }
