@@ -57,11 +57,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const sliderTreble = document.getElementById('slider-treble');
   const sliderReverb = document.getElementById('slider-reverb');
   const sliderChorus = document.getElementById('slider-chorus');
+  const sliderStereo = document.getElementById('slider-stereo');
   const sliderVolume = document.getElementById('slider-volume');
   const valWarmth = document.getElementById('val-warmth');
   const valTreble = document.getElementById('val-treble');
   const valReverb = document.getElementById('val-reverb');
   const valChorus = document.getElementById('val-chorus');
+  const valStereo = document.getElementById('val-stereo');
   const valVolume = document.getElementById('val-volume');
 
   // Ambient Environmental SFX Controls
@@ -311,6 +313,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  if (sliderStereo) {
+    sliderStereo.addEventListener('input', (e) => {
+      const pct = parseInt(e.target.value, 10);
+      setMixerParameter('stereoWidth', pct / 100);
+      if (valStereo) valStereo.innerText = pct + '%';
+      presetButtons.forEach(b => b.classList.remove('active'));
+    });
+  }
+
   if (sliderVolume) {
     sliderVolume.addEventListener('input', (e) => {
       const db = parseFloat(e.target.value);
@@ -348,6 +359,11 @@ document.addEventListener('DOMContentLoaded', () => {
           const pct = Math.round(settings.chorusWet * 100);
           sliderChorus.value = pct;
           if (valChorus) valChorus.innerText = pct + '%';
+        }
+        if (sliderStereo) {
+          const pct = Math.round((settings.stereoWidth ?? 1.0) * 100);
+          sliderStereo.value = pct;
+          if (valStereo) valStereo.innerText = pct + '%';
         }
         if (sliderVolume) {
           sliderVolume.value = settings.volume;

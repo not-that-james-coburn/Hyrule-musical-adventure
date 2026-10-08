@@ -6,6 +6,27 @@ export const BLOCK_DURATION_SEC = 12.8; // 8 bars * 4 beats * (60 / 150 BPM)
 export let currentBlockDurationSec = BLOCK_DURATION_SEC;
 export let currentBlockStartTransportSec = 0;
 
+// Authentic N64 Zelda Symphonic Soundstage Panning Map (Koji Kondo / Nintendo EAD Audioseq arrangement)
+// Preserves punchy centered bass & drums while placing strings, brass, and accompaniment across the stereo field
+export const N64_ORCHESTRAL_PANS = {
+  0: -0.15, // Solo Trombone (Center-Left)
+  1:  0.25, // Solo Trumpet / Fanfare (Center-Right)
+  2: -0.35, // Brass Section / French Horns (Mid-Left)
+  3: -0.48, // String Ensemble 1 / Violins (Wide-Left)
+  4:  0.20, // Tenor Sax / Woodwind flourish (Mid-Right)
+  5: -0.10, // Flute Solo (Center-Left)
+  6:  0.45, // Orchestral Harp (Wide-Right)
+  7: -0.25, // Accordion / Reed Organ (Mid-Left)
+  8:  0.00, // Electric Bass / Pick Bass (Dead Center)
+  9:  0.00, // Standard Kit / Percussion (Dead Center)
+  10: 0.35, // Marimba (Mid-Right)
+  11: 0.00, // Ocarina Solo Lead (Dead Center with wide stereo chorus)
+  12: 0.42, // Vibraphone / Glockenspiel (Mid-Right)
+  13: 0.48, // String Ensemble 2 / Violas & Cellos (Wide-Right counter-pan)
+  14:-0.22, // Timpani (Center-Left)
+  15: 0.00  // Contrabass / Cello bass foundation (Dead Center)
+};
+
 // Standard 12-tone chromatic scale (C, C#, D, D#, E, F, F#, G, G#, A, A#, B)
 function midiToNoteName(midi) {
   const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -251,9 +272,11 @@ export class HyruleSequencer {
 
     // Dedicated Per-Channel Nodes (MIDI Channels 0–15)
     this.channelGains = {};
+    this.channelPanners = {};
     this.channelReverbSends = {};
     this.channelChorusSends = {};
     this.channelVibratos = {};
+    this.stereoWidth = 1.0; // 1.0 = Authentic N64 orchestral width, 0.0 = Mono, 1.5 = Extra wide
     this.sfxBus = null;
     this.sfxReverbSend = null;
     this.reverbBus = null;
@@ -359,37 +382,42 @@ export class HyruleSequencer {
       this.chorusEffect.connect(this.chorusReturnGain);
       this.chorusReturnGain.connect(this.masterPreBus);
 
-      // 4. Build dedicated Channel Gains, Reverb Send & Chorus Send Nodes for MIDI Channels 0–15
+      // 4. Build dedicated N64 Orchestral Stereo Stage (Panners), Channel Gains & FX Sends (Channels 0–15)
       for (let ch = 0; ch <= 15; ch++) {
         this.channelGains[ch] = new Tone.Gain(1.0);
+        const panValue = (N64_ORCHESTRAL_PANS[ch] ?? 0.0) * (this.stereoWidth ?? 1.0);
+        this.channelPanners[ch] = new Tone.Panner(panValue);
         this.channelReverbSends[ch] = new Tone.Gain(0.0);
         this.channelChorusSends[ch] = new Tone.Gain(0.0);
 
-        // Connect Channel Gain to Reverb Send & Chorus Send (post-fader)
+        // Connect Channel Gain to Reverb Send & Chorus Send (post-fader aux sends)
         this.channelGains[ch].connect(this.channelReverbSends[ch]);
         this.channelReverbSends[ch].connect(this.reverbBus);
 
         this.channelGains[ch].connect(this.channelChorusSends[ch]);
         this.channelChorusSends[ch].connect(this.chorusBus);
 
-        // Connect Channel Gain to dynamic stems
+        // Direct signal flows through dedicated Orchestral Stereo Panner into Stems
+        this.channelGains[ch].connect(this.channelPanners[ch]);
+
+        // Connect Stereo Panner to dynamic stems
         if (ch === 9 || ch === 14) {
           // Standard Kit percussion (Ch 9) & Timpani (Ch 14)
-          this.channelGains[ch].connect(this.gains.explorePercussion);
-          this.channelGains[ch].connect(this.gains.battleMusic);
+          this.channelPanners[ch].connect(this.gains.explorePercussion);
+          this.channelPanners[ch].connect(this.gains.battleMusic);
         } else if (ch === 6) {
           // Orchestral Harp (Ch 6): active in Idle pastoral mode, Explore, and Battle
-          this.channelGains[ch].connect(this.gains.idleHarp);
-          this.channelGains[ch].connect(this.gains.exploreCore);
-          this.channelGains[ch].connect(this.gains.battleMusic);
+          this.channelPanners[ch].connect(this.gains.idleHarp);
+          this.channelPanners[ch].connect(this.gains.exploreCore);
+          this.channelPanners[ch].connect(this.gains.battleMusic);
         } else if (ch === 0 || ch === 1 || ch === 2 || ch === 5 || ch === 11) {
           // Lead Melody Channels: Trombone (0), Trumpet (1), Brass (2), Flute (5), Ocarina (11)
-          this.channelGains[ch].connect(this.gains.exploreMelody);
-          this.channelGains[ch].connect(this.gains.battleMusic);
+          this.channelPanners[ch].connect(this.gains.exploreMelody);
+          this.channelPanners[ch].connect(this.gains.battleMusic);
         } else {
           // Accompaniment Channels: Strings (3, 13), Sax (4), Accordion (7), Bass (8), Marimba (10), Vibraphone (12), Contrabass (15)
-          this.channelGains[ch].connect(this.gains.exploreCore);
-          this.channelGains[ch].connect(this.gains.battleMusic);
+          this.channelPanners[ch].connect(this.gains.exploreCore);
+          this.channelPanners[ch].connect(this.gains.battleMusic);
         }
       }
 
@@ -617,6 +645,7 @@ export class HyruleSequencer {
     return {
       samplers,
       channelGains: this.channelGains,
+      channelPanners: this.channelPanners,
       channelReverbSends: this.channelReverbSends,
       channelChorusSends: this.channelChorusSends,
       instGains: this.instGains,
@@ -1459,6 +1488,50 @@ export class HyruleSequencer {
         });
       }
 
+      // Schedule N64 Orchestral Stereo Stage Panner & CC#10 Pan for this channel at block start
+      const channelPanner = this.channelPanners ? this.channelPanners[ch] : null;
+      let targetPan = (typeof N64_ORCHESTRAL_PANS[ch] === 'number') ? N64_ORCHESTRAL_PANS[ch] : 0.0;
+      targetPan *= (this.stereoWidth ?? 1.0);
+
+      chTracks.forEach(t => {
+        if (t.controlChanges && t.controlChanges['10'] && t.controlChanges['10'].length > 0) {
+          const raw10 = t.controlChanges['10'][0].value;
+          targetPan = Math.max(-1.0, Math.min(1.0, ((raw10 - 64) / 64) * (this.stereoWidth ?? 1.0)));
+        }
+      });
+
+      if (channelPanner) {
+        const evPan = transport.scheduleOnce((time) => {
+          channelPanner.pan.setValueAtTime(targetPan, time);
+        }, startTransportSec);
+        eventIds.push({ id: evPan, time: startTransportSec });
+      }
+
+      // Collect all dynamic CC#10 Pan events on this channel within this 8-bar block if present
+      const blockCc10 = [];
+      chTracks.forEach(t => {
+        if (t.controlChanges && t.controlChanges['10']) {
+          t.controlChanges['10'].forEach(e => {
+            if (e.ticks >= startTicks && e.ticks < endTicks) {
+              blockCc10.push(e);
+            }
+          });
+        }
+      });
+      blockCc10.sort((a, b) => a.ticks - b.ticks);
+      if (blockCc10.length > 0 && channelPanner) {
+        blockCc10.forEach(ccEvent => {
+          const ccRelSec = Math.max(0, ccEvent.time - blockStartMidiSec);
+          const ccTransportTime = startTransportSec + ccRelSec;
+          const raw10 = ccEvent.value;
+          const panVal = Math.max(-1.0, Math.min(1.0, ((raw10 - 64) / 64) * (this.stereoWidth ?? 1.0)));
+          const evId = transport.scheduleOnce((time) => {
+            channelPanner.pan.setValueAtTime(panVal, time);
+          }, ccTransportTime);
+          eventIds.push({ id: evId, time: ccTransportTime });
+        });
+      }
+
       // Collect all CC#11 Expression events on this channel within this 8-bar block
       const blockCc11 = [];
       chTracks.forEach(t => {
@@ -1781,6 +1854,12 @@ export class HyruleSequencer {
           this.channelChorusSends[ch].gain.cancelScheduledValues(now);
         } catch (e) {}
       }
+      if (this.channelPanners[ch]) {
+        try {
+          this.channelPanners[ch].pan.cancelScheduledValues(now);
+          this.channelPanners[ch].pan.setValueAtTime((N64_ORCHESTRAL_PANS[ch] ?? 0.0) * (this.stereoWidth ?? 1.0), now);
+        } catch (e) {}
+      }
     }
   }
 
@@ -1816,6 +1895,19 @@ export class HyruleSequencer {
     }
   }
 
+  setStereoWidth(widthRatio) {
+    this.stereoWidth = Math.max(0.0, Math.min(1.5, widthRatio));
+    const now = Tone.now();
+    for (let ch = 0; ch <= 15; ch++) {
+      if (this.channelPanners && this.channelPanners[ch]) {
+        const basePan = N64_ORCHESTRAL_PANS[ch] ?? 0.0;
+        try {
+          this.channelPanners[ch].pan.setValueAtTime(basePan * this.stereoWidth, now);
+        } catch (e) {}
+      }
+    }
+  }
+
   setMixerPreset(presetName) {
     switch (presetName) {
       case 'n64': // Authentic N64 RSP Warmth (Default & Recommended)
@@ -1823,6 +1915,7 @@ export class HyruleSequencer {
         this.setMasterTreble(0.0);
         this.setMasterReverbWet(0.60);
         this.setMasterChorusWet(0.55);
+        this.setStereoWidth(1.0);
         this.setMasterVolume(-2.0);
         if (this.masterEQ) {
           this.masterEQ.low.value = 0.5;
@@ -1834,6 +1927,7 @@ export class HyruleSequencer {
         this.setMasterTreble(1.5);
         this.setMasterReverbWet(0.85);
         this.setMasterChorusWet(0.40);
+        this.setStereoWidth(1.25);
         this.setMasterVolume(-2.5);
         if (this.masterEQ) {
           this.masterEQ.low.value = 1.0;
@@ -1845,6 +1939,7 @@ export class HyruleSequencer {
         this.setMasterTreble(-3.0);
         this.setMasterReverbWet(0.40);
         this.setMasterChorusWet(0.30);
+        this.setStereoWidth(0.65);
         this.setMasterVolume(-2.0);
         if (this.masterEQ) {
           this.masterEQ.low.value = 1.5;
@@ -1856,6 +1951,7 @@ export class HyruleSequencer {
         this.setMasterTreble(2.0);
         this.setMasterReverbWet(0.50);
         this.setMasterChorusWet(0.65);
+        this.setStereoWidth(1.10);
         this.setMasterVolume(-2.5);
         if (this.masterEQ) {
           this.masterEQ.low.value = 0.0;
@@ -1871,7 +1967,8 @@ export class HyruleSequencer {
       warmth: this.n64Filter ? this.n64Filter.frequency.value : 13500,
       treble: this.masterEQ ? this.masterEQ.high.value : 0.0,
       reverbWet: this.reverbReturnGain ? Math.min(1.0, this.reverbReturnGain.gain.value / 1.1) : 0.60,
-      chorusWet: this.chorusReturnGain ? Math.min(1.0, this.chorusReturnGain.gain.value / 1.1) : 0.55
+      chorusWet: this.chorusReturnGain ? Math.min(1.0, this.chorusReturnGain.gain.value / 1.1) : 0.55,
+      stereoWidth: (typeof this.stereoWidth === 'number') ? this.stereoWidth : 1.0
     };
   }
 
@@ -2048,6 +2145,11 @@ export function setMixerParameter(param, value) {
   else if (param === 'treble') sequencer.setMasterTreble(value);
   else if (param === 'reverb') sequencer.setMasterReverbWet(value);
   else if (param === 'chorus') sequencer.setMasterChorusWet(value);
+  else if (param === 'stereoWidth') sequencer.setStereoWidth(value);
+}
+
+export function setStereoWidth(width) {
+  if (sequencer) sequencer.setStereoWidth(width);
 }
 
 export function setMixerPreset(presetName) {
