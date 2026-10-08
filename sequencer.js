@@ -298,6 +298,9 @@ export class HyruleSequencer {
     // Stream notes buffer for continuous right-to-left visualizer
     this.streamNotes = [];
 
+    // History and scheduled timeline of blocks for accurate runtime measure lines
+    this.blockHistory = [];
+
     // Simple Mode Randomizer Engine (Adventure, Rest, Battle)
     this.randomizerEnabled = true;
     this.currentModeBlocksRemaining = 0;
@@ -420,6 +423,21 @@ export class HyruleSequencer {
       } catch (err) {
         console.warn('Some SoundFont buffers took too long, continuing with ready samples:', err);
       }
+
+      // Populate initial block cues and blockHistory
+      const b0 = blockMap.MORNING;
+      const d0 = this.getBlockDuration(b0);
+      const b1 = blockMap.INTRO;
+      const d1 = this.getBlockDuration(b1);
+      this.currentBlock = b0;
+      this.currentBlockStartTransportSec = 0;
+      this.currentBlockDurationSec = d0;
+      this.upcomingBlock = b1;
+      this.upcomingBlockStartSec = d0;
+      this.blockHistory = [
+        { block: b0, startTransportSec: 0, durationSec: d0 },
+        { block: b1, startTransportSec: d0, durationSec: d1 }
+      ];
 
       this.isInitialized = true;
     })();
@@ -655,21 +673,45 @@ export class HyruleSequencer {
   }
 
   getTrackCategory(track, trIdx) {
-    if (!track) return 'melody';
-    if (track.channel === 9 || (track.instrument && track.instrument.family === 'drums')) {
+    if (!track) return 'harmony';
+    const ch = track.channel;
+
+    // 1. Percussion: MIDI Ch 9 (Kit) & Ch 14 (Timpani)
+    if (ch === 9 || ch === 14) {
       return 'percussion';
     }
-    if (track.channel === 14 || (track.instrument && track.instrument.name && track.instrument.name.toLowerCase().includes('timpani'))) {
+    if (track.instrument && (track.instrument.family === 'drums' || (track.instrument.name && track.instrument.name.toLowerCase().includes('timpani')))) {
       return 'percussion';
     }
-    if (track.channel === 8 || track.channel === 15) {
+
+    // 2. Bass: MIDI Ch 8 (Pick Bass) & Ch 15 (Contrabass)
+    if (ch === 8 || ch === 15) {
       return 'bass';
     }
     const instName = (track.instrument ? track.instrument.name : '').toLowerCase();
-    if (instName.includes('bass') || instName.includes('cello')) {
+    if (instName.includes('contrabass') || (instName.includes('bass') && !instName.includes('brass')) || instName.includes('cello')) {
       return 'bass';
     }
-    return 'melody';
+
+    // 3. Lead Solo Melody:
+    // Tr 0: Trombone Solo Lead
+    // Tr 3: Trumpet Solo Lead
+    // Tr 13: Flute Solo Lead
+    // Tr 25: Ocarina Solo Lead
+    if (trIdx === 0 || trIdx === 3 || trIdx === 13 || trIdx === 25) {
+      return 'melody';
+    }
+
+    // Ocarina (ch 11) is always melody
+    if (ch === 11) {
+      return 'melody';
+    }
+
+    // 4. Harmony & Accompaniment:
+    // Secondary brass voices (Tr 1, 2, 4, 5, 7), Strings (Tr 8-11, 27-29),
+    // Sax flourishes (Tr 12), Flute harmony (Tr 15), Harp (Tr 16),
+    // Accordion (Tr 17), Marimba (Tr 24), Vibraphone bells (Tr 26)
+    return 'harmony';
   }
 
   getSamplerForTrack(trackIndex) {
@@ -836,6 +878,19 @@ export class HyruleSequencer {
     const nextBlock = this.selectBlockForState(this.currentState);
     this.upcomingBlock = nextBlock;
     this.scheduleNotesForBlock(nextBlock, nextPhraseIdx, nextStartTransportSec);
+
+    // 9. Synchronize blockHistory for dynamic runtime measure lines
+    if (this.blockHistory) {
+      this.blockHistory = this.blockHistory.filter(b => b.startTransportSec < interruptTime - 0.05);
+      if (this.blockHistory.length > 0) {
+        const last = this.blockHistory[this.blockHistory.length - 1];
+        if (last.startTransportSec + last.durationSec > interruptTime) {
+          last.durationSec = Math.max(0.1, interruptTime - last.startTransportSec);
+        }
+      }
+      this.addBlockToHistory(targetBlock, interruptTime, blockDurSec);
+      this.addBlockToHistory(nextBlock, nextStartTransportSec, this.getBlockDuration(nextBlock));
+    }
   }
 
   /**
@@ -1173,6 +1228,104 @@ export class HyruleSequencer {
     return Math.max(0.1, endTimeSec - startTimeSec);
   }
 
+  addBlockToHistory(block, startTransportSec, durationSec) {
+    if (!block) return;
+    if (!this.blockHistory) this.blockHistory = [];
+    // Remove any overlapping future blocks starting at or after this startTransportSec
+    this.blockHistory = this.blockHistory.filter(b => b.startTransportSec < startTransportSec - 0.05);
+    this.blockHistory.push({ block, startTransportSec, durationSec });
+    // Keep history bounded to 25 blocks to prevent memory accumulation
+    if (this.blockHistory.length > 25) {
+      this.blockHistory = this.blockHistory.slice(-25);
+    }
+  }
+
+  /**
+   * Generates mathematically exact measure downbeats and 8-bar boundaries for the visible viewport,
+   * calculated directly at runtime from active MIDI tick timing and scheduled block start times.
+   */
+  getMeasureLines(viewportStartSec, viewportEndSec) {
+    const lines = [];
+    const ticksPerBar = 4 * this.PPQ;
+
+    const activeBlocks = (this.blockHistory && this.blockHistory.length > 0)
+      ? this.blockHistory
+      : [
+          { block: blockMap.MORNING, startTransportSec: 0, durationSec: this.getBlockDuration(blockMap.MORNING) },
+          { block: blockMap.INTRO, startTransportSec: this.getBlockDuration(blockMap.MORNING), durationSec: 12.8 }
+        ];
+
+    let maxScheduledEndSec = 0;
+
+    activeBlocks.forEach((item) => {
+      const { block, startTransportSec, durationSec } = item;
+      const blockEndSec = startTransportSec + durationSec;
+      if (blockEndSec > maxScheduledEndSec) {
+        maxScheduledEndSec = blockEndSec;
+      }
+
+      if (blockEndSec < viewportStartSec - 1.0 || startTransportSec > viewportEndSec + 1.0) {
+        return;
+      }
+
+      if (!block) return;
+      const totalBars = Math.max(1, block.endBar - block.startBar);
+      const blockStartMidiSec = this.ticksToTime(block.startBar * ticksPerBar);
+
+      for (let b = 0; b <= totalBars; b++) {
+        const barTicks = (block.startBar + b) * ticksPerBar;
+        const barMidiSec = this.ticksToTime(barTicks);
+        const barRelSec = barMidiSec - blockStartMidiSec;
+        const barAbsSec = startTransportSec + barRelSec;
+
+        if (barAbsSec >= viewportStartSec - 0.5 && barAbsSec <= viewportEndSec + 1.5) {
+          lines.push({
+            transportTime: barAbsSec,
+            is8BarBoundary: (b === 0 || b === totalBars),
+            barNumber: b
+          });
+        }
+      }
+    });
+
+    // If viewport extends beyond buffered scheduled blocks, extrapolate standard 1.6s bars (150 BPM)
+    if (maxScheduledEndSec < viewportEndSec + 1.5) {
+      let t = maxScheduledEndSec > 0 ? maxScheduledEndSec : 0;
+      let barCounter = 0;
+      while (t <= viewportEndSec + 2.0) {
+        t += 1.6;
+        barCounter++;
+        if (t >= viewportStartSec - 0.5) {
+          lines.push({
+            transportTime: t,
+            is8BarBoundary: (barCounter % 8 === 0),
+            barNumber: barCounter % 8
+          });
+        }
+      }
+    }
+
+    lines.sort((a, b) => a.transportTime - b.transportTime);
+
+    // Deduplicate boundaries close to each other (e.g. adjacent block handoff within 35ms)
+    const deduped = [];
+    for (let i = 0; i < lines.length; i++) {
+      const cur = lines[i];
+      if (deduped.length === 0) {
+        deduped.push(cur);
+      } else {
+        const prev = deduped[deduped.length - 1];
+        if (Math.abs(cur.transportTime - prev.transportTime) < 0.035) {
+          if (cur.is8BarBoundary) prev.is8BarBoundary = true;
+        } else {
+          deduped.push(cur);
+        }
+      }
+    }
+
+    return deduped;
+  }
+
   /**
    * Schedule all MIDI notes in an 8-measure block onto Tone.Transport timeline.
    * Strictly adheres to all parameters in hyrule_field_midi.json:
@@ -1419,6 +1572,9 @@ export class HyruleSequencer {
 
     // 4. Pre-schedule the new upcoming block
     this.scheduleNotesForBlock(newBlock, upcomingPhraseIdx, upcomingStartTransportSec);
+
+    // 5. Synchronize blockHistory for runtime measure lines
+    this.addBlockToHistory(newBlock, upcomingStartTransportSec, this.getBlockDuration(newBlock));
   }
 
   /**
@@ -1518,6 +1674,7 @@ export class HyruleSequencer {
 
     this.upcomingBlock = nextBlock;
     this.scheduleNotesForBlock(nextBlock, nextPhraseIdx, nextStartTransportSec);
+    this.addBlockToHistory(nextBlock, nextStartTransportSec, this.getBlockDuration(nextBlock));
 
     // Schedule next phrase boundary event on Tone.Transport
     const transport = Tone.getTransport();
@@ -1568,9 +1725,16 @@ export class HyruleSequencer {
 
       // Phrase 1: Heroic Intro Fanfare (Bars 9–17, 12.8s)
       const block1 = blockMap.INTRO;
+      const dur1 = this.getBlockDuration(block1);
       this.upcomingBlock = block1;
       this.upcomingBlockStartSec = dur0;
       this.scheduleNotesForBlock(block1, 1, dur0);
+
+      // Synchronize block history for accurate runtime measure lines
+      this.blockHistory = [
+        { block: block0, startTransportSec: 0, durationSec: dur0 },
+        { block: block1, startTransportSec: dur0, durationSec: dur1 }
+      ];
 
       this.initialSequenceStage = 2; // Next will be Day 1
 
@@ -1820,6 +1984,24 @@ export function getActiveCueInfo() {
   const transportSec = Tone.getTransport() ? Tone.getTransport().seconds : 0;
   const blockStartSec = sequencer.currentBlockStartTransportSec;
   const blockDurSec = sequencer.currentBlockDurationSec || sequencer.BLOCK_DURATION_SEC;
+  const timeInBlock = Math.max(0, transportSec - blockStartSec);
+
+  // Compute exact musical bar number in active block
+  let currentBarInBlock = 1;
+  let totalBarsInBlock = 8;
+  if (currentBlock && sequencer.midiData && sequencer.midiData.header) {
+    totalBarsInBlock = Math.max(1, currentBlock.endBar - currentBlock.startBar);
+    const ticksPerBar = 4 * sequencer.PPQ;
+    const startMidiSec = sequencer.ticksToTime(currentBlock.startBar * ticksPerBar);
+    currentBarInBlock = totalBarsInBlock;
+    for (let b = 1; b <= totalBarsInBlock; b++) {
+      const barEndSec = sequencer.ticksToTime((currentBlock.startBar + b) * ticksPerBar) - startMidiSec;
+      if (timeInBlock < barEndSec) {
+        currentBarInBlock = b;
+        break;
+      }
+    }
+  }
 
   return {
     cueId: currentBlock ? currentBlock.id : 'Sunrise (Bars 1–9)',
@@ -1833,9 +2015,15 @@ export function getActiveCueInfo() {
     transportSec,
     blockStartSec,
     blockDurSec,
-    timeInBlock: Math.max(0, transportSec - blockStartSec),
-    progressPercent: Math.min(100, Math.max(0, ((transportSec - blockStartSec) / blockDurSec) * 100))
+    timeInBlock,
+    currentBarInBlock,
+    totalBarsInBlock,
+    progressPercent: Math.min(100, Math.max(0, (timeInBlock / blockDurSec) * 100))
   };
+}
+
+export function getMeasureLines(viewportStartSec, viewportEndSec) {
+  return sequencer.getMeasureLines(viewportStartSec, viewportEndSec);
 }
 
 export async function changeGameMode(newMode) {

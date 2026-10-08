@@ -5,6 +5,7 @@ import {
   getPendingStateChange,
   getActiveCueInfo,
   getStreamNotes,
+  getMeasureLines,
   whenAudioLoaded,
   sequencer,
   HyruleSequencer,
@@ -367,7 +368,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const PIXELS_PER_SEC = 100; // Conveyor rate
 
   let cachedCanvasWidth = 600;
-  const cachedCanvasHeight = 175;
+  const cachedCanvasHeight = 225;
 
   // Setup HiDPI Canvas Scaling (cached dimensions eliminate per-frame getBoundingClientRect)
   function setupCanvasDPI() {
@@ -383,11 +384,12 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('resize', setupCanvasDPI);
   setupCanvasDPI();
 
-  // Lane geometry definitions (compact 175px height)
+  // Lane geometry definitions (expanded 225px height with dedicated Harmony track)
   const LANES = {
-    melody: { top: 18, bottom: 74, height: 56, label: 'MELODY' },
-    bass: { top: 80, bottom: 126, height: 46, label: 'BASS' },
-    percussion: { top: 132, bottom: 172, height: 40, label: 'PERC' }
+    melody: { top: 14, bottom: 64, height: 50, label: 'MELODY' },
+    harmony: { top: 68, bottom: 118, height: 50, label: 'HARMONY' },
+    bass: { top: 122, bottom: 168, height: 46, label: 'BASS' },
+    percussion: { top: 172, bottom: 218, height: 46, label: 'PERC' }
   };
 
   // Static color table: eliminates ~24,000 per-second object allocations in the render loop
@@ -397,10 +399,15 @@ document.addEventListener('DOMContentLoaded', () => {
       QUIET: { fill: '#38bdf8', stroke: '#93c5fd', glow: 'rgba(56, 189, 248, 0.55)', hit: '#ffffff' },
       BATTLE: { fill: '#ef4444', stroke: '#fca5a5', glow: 'rgba(239, 68, 68, 0.6)', hit: '#ffffff' }
     },
+    harmony: {
+      EXPLORATION: { fill: '#fbbf24', stroke: '#fde68a', glow: 'rgba(251, 191, 36, 0.5)', hit: '#ffffff' },
+      QUIET: { fill: '#818cf8', stroke: '#c7d2fe', glow: 'rgba(129, 140, 248, 0.5)', hit: '#ffffff' },
+      BATTLE: { fill: '#f97316', stroke: '#fed7aa', glow: 'rgba(249, 115, 22, 0.5)', hit: '#ffffff' }
+    },
     bass: {
       EXPLORATION: { fill: '#10b981', stroke: '#34d399', glow: 'rgba(16, 185, 129, 0.4)', hit: '#a7f3d0' },
       QUIET: { fill: '#6366f1', stroke: '#818cf8', glow: 'rgba(99, 102, 241, 0.4)', hit: '#c7d2fe' },
-      BATTLE: { fill: '#f97316', stroke: '#fb923c', glow: 'rgba(249, 115, 22, 0.45)', hit: '#fed7aa' }
+      BATTLE: { fill: '#e11d48', stroke: '#fda4af', glow: 'rgba(225, 29, 72, 0.45)', hit: '#ffe4e6' }
     },
     percussion: {
       EXPLORATION: { fill: '#a3e635', stroke: '#bef264', glow: 'rgba(163, 230, 53, 0.4)', hit: '#fef08a' },
@@ -421,9 +428,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (track === 'melody') {
       const lane = LANES.melody;
-      // Map MIDI pitch range [52 (E3) to 88 (E6)]
-      const minMidi = 52;
-      const maxMidi = 88;
+      // Map MIDI pitch range [48 (C3) to 96 (C7)]
+      const minMidi = 48;
+      const maxMidi = 96;
+      const norm = Math.max(0, Math.min(1, (note.midi - minMidi) / (maxMidi - minMidi)));
+      const noteH = 5;
+      const noteY = (lane.bottom - 3) - norm * (lane.height - 10) - noteH;
+      return { y: noteY, h: noteH };
+    }
+
+    if (track === 'harmony') {
+      const lane = LANES.harmony;
+      // Map MIDI pitch range [40 (E2) to 90 (F#6)]
+      const minMidi = 40;
+      const maxMidi = 90;
       const norm = Math.max(0, Math.min(1, (note.midi - minMidi) / (maxMidi - minMidi)));
       const noteH = 5;
       const noteY = (lane.bottom - 3) - norm * (lane.height - 10) - noteH;
@@ -432,9 +450,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (track === 'bass') {
       const lane = LANES.bass;
-      // Map MIDI pitch range [28 (E1) to 55 (G3)]
+      // Map MIDI pitch range [28 (E1) to 60 (C4)]
       const minMidi = 28;
-      const maxMidi = 55;
+      const maxMidi = 60;
       const norm = Math.max(0, Math.min(1, (note.midi - minMidi) / (maxMidi - minMidi)));
       const noteH = 6;
       const noteY = (lane.bottom - 3) - norm * (lane.height - 11) - noteH;
@@ -447,12 +465,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let noteY = lane.bottom - 12;
     let noteH = 7;
 
-    if (pitch === 35 || pitch === 36) {
-      // Kick drum
+    if (pitch === 35 || pitch === 36 || pitch === 40) {
+      // Kick drum / Main Snare
       noteY = lane.bottom - 10;
       noteH = 7;
-    } else if (pitch === 38 || pitch === 40) {
-      // Snare
+    } else if (pitch === 38 || pitch === 43) {
+      // Snare / Rim
       noteY = lane.top + 16;
       noteH = 6;
     } else if (pitch === 42 || pitch === 44 || pitch === 46) {
@@ -582,24 +600,22 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.fillText(lane.label, 8, lane.top + 10);
     });
 
-    // 2. Measure / Bar Grid Lines scrolling right-to-left (1 bar = 1.6s at 150 BPM)
-    const barSec = 1.6;
-    const startBarIdx = Math.floor(currentTransportSec / barSec) - 1;
-    const endBarIdx = startBarIdx + Math.ceil(width / (barSec * PIXELS_PER_SEC)) + 3;
+    // 2. Measure / Bar Grid Lines scrolling right-to-left (calculated dynamically at runtime from actual music timing)
+    const viewportStartSec = currentTransportSec - (PLAYHEAD_X / PIXELS_PER_SEC);
+    const viewportEndSec = currentTransportSec + ((width - PLAYHEAD_X) / PIXELS_PER_SEC);
+    const measureLines = getMeasureLines(viewportStartSec, viewportEndSec);
 
     ctx.save();
-    for (let b = Math.max(0, startBarIdx); b <= endBarIdx; b++) {
-      const barTime = b * barSec;
-      const barX = PLAYHEAD_X + (barTime - currentTransportSec) * PIXELS_PER_SEC;
+    for (let i = 0; i < measureLines.length; i++) {
+      const line = measureLines[i];
+      const barX = PLAYHEAD_X + (line.transportTime - currentTransportSec) * PIXELS_PER_SEC;
 
       if (barX >= 0 && barX <= width + 40) {
-        const is8BarBoundary = (b % 8 === 0);
-
         ctx.beginPath();
         ctx.moveTo(barX, 0);
         ctx.lineTo(barX, height);
 
-        if (is8BarBoundary) {
+        if (line.is8BarBoundary) {
           ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
           ctx.lineWidth = 1.5;
           ctx.setLineDash([]);
@@ -764,13 +780,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    // 5. Measure Counter within 8-bar block (Updates only once every 1.6s)
+    // 5. Measure Counter within 8-bar block (Updates synchronously from accurate musical bar)
     if (cueMeasureCounterEl) {
       let counterText = "Ready";
       if (isPlaying) {
-        const barSec = (cueInfo.blockDurSec && cueInfo.blockDurSec > 0) ? (cueInfo.blockDurSec / 8) : 1.6;
-        const barInBlock = Math.min(8, Math.floor(cueInfo.timeInBlock / barSec) + 1);
-        counterText = `Bar ${barInBlock}/8`;
+        const curBar = cueInfo.currentBarInBlock || 1;
+        const totalBars = cueInfo.totalBarsInBlock || 8;
+        counterText = `Bar ${curBar}/${totalBars}`;
       }
       if (counterText !== lastCounterText) {
         cueMeasureCounterEl.innerText = counterText;
