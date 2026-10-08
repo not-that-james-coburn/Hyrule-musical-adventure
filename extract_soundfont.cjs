@@ -1,20 +1,26 @@
 const fs = require('fs');
 const path = require('path');
 
-const sf2Path = path.resolve(__dirname, '00_ALL.sf2');
-const outDir = path.resolve(__dirname, 'public/soundfont');
+// Prefer the newly downloaded authentic rip from Xadra, fallback to 00_ALL.sf2 if needed
+const sf2Candidates = [
+  path.resolve(__dirname, 'Xadra_s_LoZ_Soundfont_2023.sf2'),
+  path.resolve(__dirname, '00_ALL.sf2')
+];
 
-if (!fs.existsSync(sf2Path)) {
-  console.error('00_ALL.sf2 not found at', sf2Path);
+let sf2Path = sf2Candidates.find(p => fs.existsSync(p));
+if (!sf2Path) {
+  console.error('No valid SoundFont found in workspace!');
   process.exit(1);
 }
 
+const outDir = path.resolve(__dirname, 'public/soundfont');
 if (!fs.existsSync(outDir)) {
   fs.mkdirSync(outDir, { recursive: true });
 }
 
+console.log(`Parsing SoundFont: ${path.basename(sf2Path)}...`);
 const sf2Buf = fs.readFileSync(sf2Path);
-console.log('Read 00_ALL.sf2, size:', sf2Buf.length, 'bytes');
+console.log(`Read ${sf2Buf.length} bytes.`);
 
 // 1. Locate RIFF chunks
 function readSubchunks(buf, start, end) {
@@ -55,25 +61,16 @@ while (pos < sf2Buf.length - 8) {
 }
 
 if (smplPos < 0 || pdtaPos < 0) {
-  console.error('Failed to locate smpl or pdta chunks');
+  console.error('Failed to locate smpl or pdta chunks in SoundFont');
   process.exit(1);
 }
-
-console.log(`smpl offset=${smplPos}, size=${smplSize}`);
-console.log(`pdta offset=${pdtaPos}, size=${pdtaSize}`);
 
 const pdtaSub = readSubchunks(sf2Buf, pdtaPos, pdtaPos + pdtaSize);
-const shdr = pdtaSub.shdr;
 
-if (!shdr) {
-  console.error('shdr chunk missing from pdta');
-  process.exit(1);
-}
-
-// 2. Parse sample headers
+// 2. Parse sample headers (shdr)
 const samples = [];
-for (let i = 0; i < shdr.size; i += 46) {
-  const p = shdr.pos + i;
+for (let i = 0; i < pdtaSub.shdr.size; i += 46) {
+  const p = pdtaSub.shdr.pos + i;
   const name = sf2Buf.toString('ascii', p, p + 20).replace(/\0+$/, '').trim();
   const start = sf2Buf.readUInt32LE(p + 20);
   const end = sf2Buf.readUInt32LE(p + 24);
@@ -84,25 +81,139 @@ for (let i = 0; i < shdr.size; i += 46) {
   const pitchCorrection = sf2Buf.readInt8(p + 41);
   const sampleType = sf2Buf.readUInt16LE(p + 44);
 
-  if (name && name !== 'EOS' && end > start) {
-    samples.push({
-      index: i / 46,
-      name,
-      start,
-      end,
-      startloop,
-      endloop,
-      sampleRate,
-      originalPitch,
-      pitchCorrection,
-      sampleType
-    });
-  }
+  samples.push({
+    index: i / 46,
+    name,
+    start,
+    end,
+    startloop,
+    endloop,
+    sampleRate: sampleRate || 32000,
+    originalPitch,
+    pitchCorrection,
+    sampleType
+  });
 }
 
-console.log(`Parsed ${samples.length} valid sample headers from SF2`);
+// 3. Parse generators helper
+function readGens(chunk) {
+  const gens = [];
+  for (let i = 0; i < chunk.size; i += 4) {
+    const p = chunk.pos + i;
+    gens.push({
+      oper: sf2Buf.readUInt16LE(p),
+      amount: sf2Buf.readInt16LE(p + 2),
+      uAmount: sf2Buf.readUInt16LE(p + 2)
+    });
+  }
+  return gens;
+}
+const pgens = readGens(pdtaSub.pgen);
+const igens = readGens(pdtaSub.igen);
 
-// 3. Helper: create 16-bit mono PCM WAV
+// 4. Parse bags helper
+function readBags(chunk) {
+  const bags = [];
+  for (let i = 0; i < chunk.size; i += 4) {
+    const p = chunk.pos + i;
+    bags.push({
+      genIndex: sf2Buf.readUInt16LE(p),
+      modIndex: sf2Buf.readUInt16LE(p + 2)
+    });
+  }
+  return bags;
+}
+const pbags = readBags(pdtaSub.pbag);
+const ibags = readBags(pdtaSub.ibag);
+
+// 5. Parse instruments (inst)
+const instruments = [];
+for (let i = 0; i < pdtaSub.inst.size; i += 22) {
+  const p = pdtaSub.inst.pos + i;
+  instruments.push({
+    index: i / 22,
+    name: sf2Buf.toString('ascii', p, p + 20).replace(/\0+$/, '').trim(),
+    bagIdx: sf2Buf.readUInt16LE(p + 20)
+  });
+}
+
+// 6. Parse presets (phdr)
+const presets = [];
+for (let i = 0; i < pdtaSub.phdr.size; i += 38) {
+  const p = pdtaSub.phdr.pos + i;
+  presets.push({
+    index: i / 38,
+    name: sf2Buf.toString('ascii', p, p + 20).replace(/\0+$/, '').trim(),
+    presetNum: sf2Buf.readUInt16LE(p + 20),
+    bankNum: sf2Buf.readUInt16LE(p + 22),
+    bagIdx: sf2Buf.readUInt16LE(p + 24)
+  });
+}
+
+function getPresetSamples(presetName) {
+  const pList = presets.filter(p => p.name.toLowerCase() === presetName.toLowerCase());
+  if (pList.length === 0) return [];
+  const preset = pList[0];
+  const startBag = preset.bagIdx;
+  const endBag = presets[preset.index + 1] ? presets[preset.index + 1].bagIdx : pbags.length;
+
+  const mappedSamples = [];
+  for (let b = startBag; b < endBag; b++) {
+    const startGen = pbags[b].genIndex;
+    const endGen = pbags[b + 1] ? pbags[b + 1].genIndex : pgens.length;
+    let instIdx = -1;
+    let pKeyRange = null;
+
+    for (let g = startGen; g < endGen; g++) {
+      if (pgens[g].oper === 41) instIdx = pgens[g].uAmount;
+      if (pgens[g].oper === 43) pKeyRange = { lo: pgens[g].uAmount & 0xFF, hi: (pgens[g].uAmount >> 8) & 0xFF };
+    }
+
+    if (instIdx >= 0 && instIdx < instruments.length) {
+      const inst = instruments[instIdx];
+      const startIbag = inst.bagIdx;
+      const endIbag = instruments[instIdx + 1] ? instruments[instIdx + 1].bagIdx : ibags.length;
+
+      for (let ib = startIbag; ib < endIbag; ib++) {
+        const startIgen = ibags[ib].genIndex;
+        const endIgen = ibags[ib + 1] ? ibags[ib + 1].genIndex : igens.length;
+        let sampleId = -1;
+        let rootKey = null;
+        let keyRange = pKeyRange;
+        let coarseTune = 0;
+        let fineTune = 0;
+
+        for (let ig = startIgen; ig < endIgen; ig++) {
+          if (igens[ig].oper === 53) sampleId = igens[ig].uAmount;
+          if (igens[ig].oper === 58) rootKey = igens[ig].uAmount;
+          if (igens[ig].oper === 43) keyRange = { lo: igens[ig].uAmount & 0xFF, hi: (igens[ig].uAmount >> 8) & 0xFF };
+          if (igens[ig].oper === 51) coarseTune = igens[ig].amount;
+          if (igens[ig].oper === 52) fineTune = igens[ig].amount;
+        }
+
+        if (sampleId >= 0 && sampleId < samples.length) {
+          const smp = samples[sampleId];
+          mappedSamples.push({
+            presetName: preset.name,
+            sampleId,
+            sampleName: smp.name,
+            rootKey: (rootKey !== null ? rootKey : smp.originalPitch) + coarseTune,
+            keyRange: keyRange || { lo: 0, hi: 127 },
+            sampleRate: smp.sampleRate,
+            start: smp.start,
+            end: smp.end,
+            startloop: smp.startloop,
+            endloop: smp.endloop,
+            pitchCorrection: smp.pitchCorrection + fineTune
+          });
+        }
+      }
+    }
+  }
+  return mappedSamples;
+}
+
+// 7. Helper: create 16-bit mono PCM WAV
 function createWavBuffer(pcmData, sampleRate = 32000, numChannels = 1, bitsPerSample = 16) {
   const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
   const blockAlign = numChannels * (bitsPerSample / 8);
@@ -129,8 +240,8 @@ function createWavBuffer(pcmData, sampleRate = 32000, numChannels = 1, bitsPerSa
   return buffer;
 }
 
-// 4. Helper: unroll loop with seamless crossfade for sustained instruments
-function processSamplePcm(s, targetSustainSec = 4.5) {
+// 8. Helper: unroll loop with seamless crossfade for sustained instruments
+function processSamplePcm(s, isPercussive = false, targetSustainSec = 4.5) {
   const numSamples = s.end - s.start;
   const rawPcm = new Int16Array(
     sf2Buf.buffer,
@@ -144,16 +255,6 @@ function processSamplePcm(s, targetSustainSec = 4.5) {
     s.endloop <= s.end &&
     (s.endloop - s.startloop) > 100
   );
-
-  // Non-looping or naturally decaying percussive instruments: export original audio
-  const nonLoopInstruments = [
-    'Piano', 'Harp', 'Marimba', 'Pizzicato', 'Timpani', 'Snare',
-    'Cymbal', 'Beat Kit', 'Ethnic Drum', 'Bell', 'Glockenspiel',
-    'Shaker', 'Cowbell', 'Clap', 'Chant', 'Clocktown', 'Lute',
-    'Kalimba', 'Bent Drum', 'Conga', 'Cuica', 'Gong'
-  ];
-
-  const isPercussive = nonLoopInstruments.some(prefix => s.name.startsWith(prefix));
 
   if (!hasLoop || isPercussive) {
     return Buffer.from(rawPcm.buffer, rawPcm.byteOffset, rawPcm.byteLength);
@@ -189,7 +290,7 @@ function processSamplePcm(s, targetSustainSec = 4.5) {
     }
   }
 
-  // 100ms gentle release fade at the very end to prevent abrupt DC cut
+  // 100ms gentle release fade at the very end
   const fadeOutSamples = Math.floor(0.1 * s.sampleRate);
   for (let i = 0; i < fadeOutSamples; i++) {
     const idx = targetSamples - fadeOutSamples + i;
@@ -200,7 +301,7 @@ function processSamplePcm(s, targetSustainSec = 4.5) {
   return Buffer.from(out.buffer, out.byteOffset, out.byteLength);
 }
 
-// 5. Clean out old public/soundfont files
+// 9. Clean out old public/soundfont files
 const existingFiles = fs.readdirSync(outDir);
 existingFiles.forEach(f => {
   if (f.endsWith('.ogg') || f.endsWith('.wav')) {
@@ -208,44 +309,159 @@ existingFiles.forEach(f => {
   }
 });
 
-// 6. Extract samples and build manifest
+// 10. Define the Pertinent Instruments Mapping for Hyrule Field Sequencer
+const pertinentPlan = [
+  // Melody & Winds
+  { preset: 'Ocarina', percussive: false, key: 'Ocarina', out: 'Ocarina.wav', pitch: 80 },
+  { preset: 'Piccolo', percussive: false, key: 'Piccolo', out: 'Piccolo.wav', pitch: 91, alias: ['Flute'] },
+  { preset: 'Flute Pad', percussive: false, key: 'Flute Pad', out: 'Flute_Pad.wav', pitch: 54 },
+  { preset: 'Clarinet', percussive: false, key: 'Clarinet', out: 'Clarinet.wav', pitch: 72 },
+  { preset: 'Oboe', percussive: false, key: 'Oboe', out: 'Oboe.wav', pitch: 76 },
+  { preset: 'Bassoon', percussive: false, key: 'Bassoon', out: 'Bassoon.wav', pitch: 45 },
+  { preset: 'Accordion', percussive: false, key: 'Accordion', out: 'Accordion.wav', pitch: 72 },
+
+  // Brass
+  { preset: 'French Horn', percussive: false, key: 'Horn', out: 'Horn.wav', pitch: 60 },
+  { preset: 'Trumpet (Alto)', percussive: false, key: 'Trumpet', out: 'Trumpet.wav', pitch: 72 },
+  { preset: 'Trumpet (Soprano)', percussive: false, key: 'Trumpet Soprano', out: 'Trumpet_Soprano.wav', pitch: 67 },
+  { preset: 'Trombone', percussive: false, key: 'Trombone', out: 'Trombone.wav', pitch: 40 },
+
+  // Strings & Pad
+  {
+    preset: 'Strings',
+    percussive: false,
+    multi: [
+      { filterRoot: 36, key: 'Strings Low', out: 'Strings_Low.wav', pitch: 36 },
+      { filterRoot: 56, key: 'Strings Middle', out: 'Strings_Middle.wav', pitch: 56 },
+      { filterRoot: 68, key: 'Strings High', out: 'Strings_High.wav', pitch: 68, alias: ['Strings'] }
+    ]
+  },
+  { preset: 'String Pad', percussive: false, key: 'String Pad', out: 'String_Pad.wav', pitch: 65, alias: ['Pad'] },
+  {
+    preset: 'Pizzicato Strings',
+    percussive: true,
+    multi: [
+      { filterRoot: 47, key: 'Pizzicato Low', out: 'Pizzicato_Low.wav', pitch: 47 },
+      { filterRoot: 70, key: 'Pizzicato High', out: 'Pizzicato_High.wav', pitch: 70 }
+    ]
+  },
+  { preset: 'Guitar (E. Bass)', percussive: true, key: 'Guitar Bass', out: 'Guitar_Bass.wav', pitch: 41 },
+
+  // Keyboards & Plucked
+  {
+    preset: 'Piano',
+    percussive: true,
+    multi: [
+      { filterRoot: 45, key: 'Piano Low', out: 'Piano_Low.wav', pitch: 45 },
+      { filterRoot: 60, key: 'Piano Middle', out: 'Piano_Middle.wav', pitch: 60, alias: ['Piano'] },
+      { filterRoot: 72, key: 'Piano High', out: 'Piano_High.wav', pitch: 72 }
+    ]
+  },
+  {
+    preset: "Sheik's Harp",
+    percussive: true,
+    multi: [
+      { filterRoot: 65, key: 'Harp Low', out: 'Harp_Low.wav', pitch: 65 },
+      { filterRoot: 77, key: 'Harp High', out: 'Harp_High.wav', pitch: 77, alias: ['Harp'] }
+    ]
+  },
+  {
+    preset: 'Marimba',
+    percussive: true,
+    multi: [
+      { filterRoot: 62, key: 'Marimba Low', out: 'Marimba_Low.wav', pitch: 62 },
+      { filterRoot: 74, key: 'Marimba High', out: 'Marimba_High.wav', pitch: 74 }
+    ]
+  },
+  { preset: 'Glockenspiel', percussive: true, key: 'Glockenspiel', out: 'Glockenspiel.wav', pitch: 83, alias: ['Bell'] },
+
+  // Percussion & Drums
+  { preset: 'PERC Timpani', percussive: true, key: 'Timpani', out: 'Timpani.wav', pitch: 60, alias: ['Timpani High', 'Timpani Low'] },
+  {
+    preset: 'PERC Snares/Crash',
+    percussive: true,
+    multi: [
+      { filterRoot: 48, key: 'Snare Low', out: 'Snare_Low.wav', pitch: 48 },
+      { filterRoot: 60, key: 'Snare High', out: 'Snare_High.wav', pitch: 60, alias: ['Snare'] },
+      { filterRoot: 72, key: 'Cymbal Hit', out: 'Cymbal_Hit.wav', pitch: 72 }
+    ]
+  },
+  { preset: 'PERC Hi Hat', percussive: true, key: 'Hi Hat', out: 'Hi_Hat.wav', pitch: 60 },
+  { preset: 'PERC Low Drum', percussive: true, key: 'Kick Drum', out: 'Kick_Drum.wav', pitch: 36, alias: ['Ethnic Kick'] },
+  {
+    preset: 'PERC Bongos',
+    percussive: true,
+    multi: [
+      { filterRoot: 36, key: 'Bent Drum', out: 'Bent_Drum.wav', pitch: 48 },
+      { filterRoot: 41, key: 'Ethnic Drum Kit 1', out: 'Ethnic_Drum_Kit_1.wav', pitch: 60 },
+      { filterRoot: 47, key: 'Ethnic Drum Kit 2', out: 'Ethnic_Drum_Kit_2.wav', pitch: 72 }
+    ]
+  }
+];
+
 const manifest = {};
+let extractedCount = 0;
 
-samples.forEach((s) => {
-  const safeFilename = s.name.replace(/[^a-zA-Z0-9_-]/g, '_') + '.wav';
-  const outPath = path.join(outDir, safeFilename);
+for (const plan of pertinentPlan) {
+  const pSamples = getPresetSamples(plan.preset);
+  if (pSamples.length === 0) {
+    console.warn(`Warning: No samples found for preset "${plan.preset}"`);
+    continue;
+  }
 
-  const pcmBuf = processSamplePcm(s);
-  const wavBuf = createWavBuffer(pcmBuf, s.sampleRate, 1, 16);
+  if (plan.multi) {
+    for (const sub of plan.multi) {
+      // Find matching sample closest to filterRoot
+      let match = pSamples.find(s => s.rootKey === sub.filterRoot);
+      if (!match) match = pSamples[0];
 
-  fs.writeFileSync(outPath, wavBuf);
+      const outPath = path.join(outDir, sub.out);
+      const pcm = processSamplePcm(match, plan.percussive);
+      const wav = createWavBuffer(pcm, match.sampleRate, 1, 16);
+      fs.writeFileSync(outPath, wav);
 
-  // Manifest key matches sample name
-  manifest[s.name] = {
-    file: `soundfont/${safeFilename}`,
-    pitch: s.originalPitch,
-    sampleRate: s.sampleRate,
-    cents: s.pitchCorrection
-  };
-});
+      manifest[sub.key] = {
+        file: `soundfont/${sub.out}`,
+        pitch: sub.pitch,
+        sampleRate: match.sampleRate,
+        cents: match.pitchCorrection || 0
+      };
+      extractedCount++;
 
-// Special drum kit mappings for direct convenience
-if (manifest['Beat Kit 1']) {
-  manifest['Kick Drum'] = {
-    file: manifest['Beat Kit 1'].file,
-    pitch: 36, // C2 kick standard
-    sampleRate: manifest['Beat Kit 1'].sampleRate
-  };
-}
-if (manifest['Ethnic Drum Kit 2']) {
-  manifest['Ethnic Kick'] = {
-    file: manifest['Ethnic Drum Kit 2'].file,
-    pitch: 36,
-    sampleRate: manifest['Ethnic Drum Kit 2'].sampleRate
-  };
+      if (sub.alias) {
+        sub.alias.forEach(a => {
+          manifest[a] = manifest[sub.key];
+        });
+      }
+      console.log(`Extracted: [${plan.preset}] -> ${sub.key} (${sub.out}, root=${sub.pitch})`);
+    }
+  } else {
+    const match = pSamples[0];
+    const outPath = path.join(outDir, plan.out);
+    const pcm = processSamplePcm(match, plan.percussive);
+    const wav = createWavBuffer(pcm, match.sampleRate, 1, 16);
+    fs.writeFileSync(outPath, wav);
+
+    manifest[plan.key] = {
+      file: `soundfont/${plan.out}`,
+      pitch: plan.pitch,
+      sampleRate: match.sampleRate,
+      cents: match.pitchCorrection || 0
+    };
+    extractedCount++;
+
+    if (plan.alias) {
+      plan.alias.forEach(a => {
+        manifest[a] = manifest[plan.key];
+      });
+    }
+    console.log(`Extracted: [${plan.preset}] -> ${plan.key} (${plan.out}, root=${plan.pitch})`);
+  }
 }
 
 fs.writeFileSync(path.join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
 
-console.log(`Successfully extracted ${Object.keys(manifest).length} samples into ${outDir}`);
-console.log('manifest.json created successfully.');
+console.log(`\n========================================`);
+console.log(`SUCCESS: Extracted ${extractedCount} authentic instruments to ${outDir}`);
+console.log(`Generated manifest.json with ${Object.keys(manifest).length} mapped keys/aliases.`);
+console.log(`========================================\n`);

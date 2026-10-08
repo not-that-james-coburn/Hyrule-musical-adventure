@@ -386,19 +386,19 @@ export class HyruleSequencer {
   }
 
   createSoundfontRack() {
-    // Calibrated instrument balance for authentic N64 Zelda SoundFont (00_ALL.sf2)
+    // Calibrated instrument balance for authentic N64 Zelda SoundFont (Xadra_s_LoZ_Soundfont_2023.sf2)
     const sampleSpecs = {
       ocarina: { filter: k => k.startsWith('Ocarina'), defaultVol: -4.0 },
       piano: { filter: k => k.startsWith('Piano'), defaultVol: -5.5 },
       trombone: { filter: k => k.startsWith('Trombone'), defaultVol: -4.5 },
       trumpet: { filter: k => k.startsWith('Trumpet'), defaultVol: -5.0 },
       brassSection: { filter: k => k.startsWith('Horn') || k.startsWith('Trumpet') || k.startsWith('Trombone'), defaultVol: -4.5 },
-      stringEnsemble: { filter: k => k.startsWith('Strings'), defaultVol: -4.0 },
-      stringEnsemble2: { filter: k => k.startsWith('Strings'), defaultVol: -4.0 },
+      stringEnsemble: { filter: k => k.startsWith('Strings') || k.startsWith('String Pad'), defaultVol: -4.0 },
+      stringEnsemble2: { filter: k => k.startsWith('Strings') || k.startsWith('String Pad'), defaultVol: -4.0 },
       cello: { filter: k => k.startsWith('Strings Low') || k.startsWith('Pizzicato Low'), defaultVol: -4.0 },
       doubleBass: { filter: k => k.startsWith('Strings Low') || k.startsWith('Pizzicato Low') || k.startsWith('Tuba'), defaultVol: -3.0 },
-      pickBass: { filter: k => k.startsWith('Pizzicato Low') || k.startsWith('Strings Low') || k.startsWith('Bassoon'), defaultVol: -3.0 },
-      flute: { filter: k => k.startsWith('Flute'), defaultVol: -5.0 },
+      pickBass: { filter: k => k.startsWith('Guitar Bass') || k.startsWith('Pizzicato Low') || k.startsWith('Strings Low') || k.startsWith('Bassoon'), defaultVol: -3.0 },
+      flute: { filter: k => k.startsWith('Flute') || k.startsWith('Piccolo'), defaultVol: -5.0 },
       tenorSax: { filter: k => k.startsWith('Clarinet') || k.startsWith('Oboe') || k.startsWith('Bassoon'), defaultVol: -5.0 },
       harp: { filter: k => k.startsWith('Harp High') || k.startsWith('Harp Low'), defaultVol: -4.0 },
       accordion: { filter: k => k.startsWith('Accordion'), defaultVol: -5.0 },
@@ -406,7 +406,7 @@ export class HyruleSequencer {
       vibraphone: { filter: k => k.startsWith('Glockenspiel') || k === 'Bell', defaultVol: -5.0 },
       timpani: { filter: k => k.startsWith('Timpani'), defaultVol: -3.5 },
       snare: { filter: k => k.startsWith('Snare'), defaultVol: -4.0 },
-      hihat: { filter: k => k === 'Cymbal Hit', defaultVol: -6.5 },
+      hihat: { filter: k => k === 'Hi Hat' || k === 'Cymbal Hit', defaultVol: -6.5 },
       kick: { filter: k => k === 'Kick Drum' || k === 'Ethnic Kick', defaultVol: -3.0 },
       tom: { filter: k => k.startsWith('Bent Drum') || k.startsWith('Ethnic Drum Kit') || k.startsWith('Timpani Low'), defaultVol: -4.0 }
     };
