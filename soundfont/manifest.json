@@ -268,5 +268,29 @@
     "pitch": 72,
     "sampleRate": 32000,
     "cents": 0
+  },
+  "Wolfos Howl": {
+    "file": "soundfont/Wolfos_Howl.wav",
+    "pitch": 72,
+    "sampleRate": 32000,
+    "cents": 0
+  },
+  "Tower Bell": {
+    "file": "soundfont/Tower_Bell.wav",
+    "pitch": 66,
+    "sampleRate": 32000,
+    "cents": 0
+  },
+  "Danger Sting": {
+    "file": "soundfont/Danger_Sting.wav",
+    "pitch": 66,
+    "sampleRate": 32000,
+    "cents": 0
+  },
+  "Prairie Wind": {
+    "file": "soundfont/Prairie_Wind.wav",
+    "pitch": 66,
+    "sampleRate": 32000,
+    "cents": 0
   }
 }

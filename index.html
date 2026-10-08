@@ -12,8 +12,8 @@
       }
     }
     </script>
-  <script type="module" crossorigin src="./assets/index-DQ9hC7o6.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-DaE40Nsp.css">
+  <script type="module" crossorigin src="./assets/index-BMApVhG3.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-CC4oHKBH.css">
 </head>
 <body>
     <main class="nintendo-console">
@@ -35,6 +35,9 @@
                 <span class="brand-text">HYRULE FIELD</span>
             </div>
             <div class="header-actions">
+                <button id="cycle-toggle-btn" class="cycle-toggle-btn active" aria-label="Toggle Auto Day/Night Cycle" title="Toggle Auto Day/Night Cycle [A]">
+                    <span id="cycle-toggle-icon">🔄</span> <span id="cycle-toggle-label">CYCLE: ON</span>
+                </button>
                 <button id="mixer-toggle-btn" class="mixer-toggle-btn" aria-label="Toggle Sound Mixer" title="Audio Mixer">
                     🎛️ <span class="mixer-btn-label">SOUND</span>
                 </button>
@@ -130,6 +133,18 @@
             </div>
         </div>
 
+        <!-- 24-Hour Diurnal Celestial Progress Bar -->
+        <div class="diurnal-bar-container" title="Hyrule 24-Hour Diurnal Progression">
+            <div class="diurnal-header">
+                <span id="hud-time-clock" class="diurnal-time">☀️ 08:00 AM (Day)</span>
+                <span id="hud-cycle-status" class="diurnal-status">AUTO CYCLE: ON</span>
+            </div>
+            <div class="diurnal-track">
+                <div id="diurnal-fill" class="diurnal-fill" style="width: 25%;"></div>
+                <div id="diurnal-marker" class="diurnal-marker" style="left: 25%;">☀️</div>
+            </div>
+        </div>
+
         <!-- Nintendo 3-Button Control Pad (Thumb-friendly horizontal row) -->
         <nav class="controller-pad">
             <button class="pad-btn day-btn active" data-mode="EXPLORATION" disabled>
@@ -145,6 +160,31 @@
                 <span class="pad-label">Battle</span>
             </button>
         </nav>
+
+        <!-- Interactive Link Movement Dynamic (Koji Kondo Melody Layering) -->
+        <div class="movement-bar">
+            <button id="movement-toggle-btn" class="movement-btn running" disabled title="Toggle Link Running vs. Standing Still (Spacebar)">
+                <span id="movement-icon" class="movement-icon">🏃</span>
+                <span id="movement-btn-text" class="movement-text">LINK RUNNING (FULL MELODY)</span>
+                <span class="movement-shortcut">[SPACE]</span>
+            </button>
+        </div>
+
+        <!-- Atmospheric Environmental SFX Strip -->
+        <div class="ambient-sfx-bar">
+            <button class="sfx-trigger-btn" id="sfx-bell-btn" disabled title="Castle Town Gate Bell [B]">
+                <span class="sfx-icon">🔔</span><span class="sfx-label">Bell [B]</span>
+            </button>
+            <button class="sfx-trigger-btn" id="sfx-howl-btn" disabled title="Wolfos Dusk Howl [H]">
+                <span class="sfx-icon">🐺</span><span class="sfx-label">Howl [H]</span>
+            </button>
+            <button class="sfx-trigger-btn" id="sfx-sting-btn" disabled title="Combat Danger Sting [D]">
+                <span class="sfx-icon">⚡</span><span class="sfx-label">Danger [D]</span>
+            </button>
+            <button class="sfx-trigger-btn" id="sfx-wind-btn" disabled title="Hyrule Prairie Wind [W]">
+                <span class="sfx-icon">🍃</span><span class="sfx-label">Wind [W]</span>
+            </button>
+        </div>
     </main>
 
 </body>
