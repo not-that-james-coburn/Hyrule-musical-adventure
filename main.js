@@ -9,6 +9,8 @@ import {
   whenAudioLoaded,
   sequencer,
   HyruleSequencer,
+  pausePlayback,
+  resumePlayback,
   setMixerParameter,
   setMixerPreset,
   getMixerSettings,
@@ -34,7 +36,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const loadingIndicator = document.getElementById('loading-indicator');
   const menuBtn = document.getElementById('menu-btn');
   const autoplayToggleBtn = document.getElementById('autoplay-toggle-btn');
-  const modeButtons = document.querySelectorAll('.mode-btn');
+  const runRestToggleBtn = document.getElementById('run-rest-toggle-btn');
+  const battleBtn = document.getElementById('battle-btn');
   const canvas = document.getElementById('note-stream-canvas');
   const ctx = canvas ? canvas.getContext('2d') : null;
 
@@ -82,16 +85,31 @@ document.addEventListener('DOMContentLoaded', () => {
       if (startBtnLabel) startBtnLabel.innerText = "ERROR LOADING";
     });
 
-  // Mode Selection UI Updater
+  // Mode Selection UI Updater (Single Run/Rest Toggle Button & Battle Button)
   function updateActiveModeUi(currentMode) {
-    modeButtons.forEach(btn => {
-      const mode = btn.getAttribute('data-mode');
-      if (mode === currentMode || (currentMode === 'BATTLE_INTRO' && mode === 'BATTLE') || (currentMode === 'BATTLE_OUTRO' && mode === 'BATTLE')) {
-        btn.classList.add('active');
-      } else {
-        btn.classList.remove('active');
+    lastSyncedMode = currentMode;
+    const isBattle = (currentMode === 'BATTLE' || currentMode === 'BATTLE_INTRO' || currentMode === 'BATTLE_OUTRO');
+    const isRest = (currentMode === 'QUIET');
+
+    if (battleBtn) {
+      battleBtn.classList.toggle('active', isBattle);
+    }
+
+    if (runRestToggleBtn) {
+      if (isBattle) {
+        runRestToggleBtn.classList.remove('active', 'run-active', 'rest-active');
+      } else if (isRest) {
+        runRestToggleBtn.classList.add('active', 'rest-active');
+        runRestToggleBtn.classList.remove('run-active');
+        runRestToggleBtn.innerText = "Run";
+        runRestToggleBtn.title = "Switch to Run Mode [1]";
+      } else { // Run mode (EXPLORATION)
+        runRestToggleBtn.classList.add('active', 'run-active');
+        runRestToggleBtn.classList.remove('rest-active');
+        runRestToggleBtn.innerText = "Rest";
+        runRestToggleBtn.title = "Switch to Rest Mode [1]";
       }
-    });
+    }
   }
 
   // Autoplay UI Updater
@@ -103,19 +121,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Menu Slide Overlay Functions (Pauses on open, resumes on close)
+  // Menu Slide Overlay Functions (Pauses with instant mute on open, un-mutes and resumes on close)
   function openMenu() {
     if (!hasStarted) return;
     isMenuOpen = true;
 
-    // Pause audio transport
-    const transport = Tone.getTransport();
-    if (transport && transport.state === 'started') {
-      transport.pause();
-      if (loadingIndicator) {
-        loadingIndicator.innerText = "PAUSED";
-        loadingIndicator.className = "status-pill";
-      }
+    // Instant-mute and pause audio transport
+    pausePlayback();
+    if (loadingIndicator) {
+      loadingIndicator.innerText = "PAUSED";
+      loadingIndicator.className = "status-pill";
     }
 
     // Set button label to Resume
@@ -132,14 +147,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!hasStarted) return;
     isMenuOpen = false;
 
-    // Resume audio transport
-    const transport = Tone.getTransport();
-    if (transport && transport.state !== 'started') {
-      transport.start();
-      if (loadingIndicator) {
-        loadingIndicator.innerText = "PLAYING";
-        loadingIndicator.className = "status-pill ready";
-      }
+    // Unmute and resume audio transport
+    resumePlayback();
+    if (loadingIndicator) {
+      loadingIndicator.innerText = "PLAYING";
+      loadingIndicator.className = "status-pill ready";
     }
 
     // Slide overlay out of view
@@ -158,13 +170,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const transport = Tone.getTransport();
     if (transport.state === 'started') {
-      transport.pause();
+      pausePlayback();
       if (loadingIndicator) {
         loadingIndicator.innerText = "PAUSED";
         loadingIndicator.className = "status-pill";
       }
     } else {
-      transport.start();
+      resumePlayback();
       if (loadingIndicator) {
         loadingIndicator.innerText = "PLAYING";
         loadingIndicator.className = "status-pill ready";
@@ -184,6 +196,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Unlock AudioContext & start sequencer with runway lead-in
         await Tone.start();
         await changeGameMode('EXPLORATION');
+        updateActiveModeUi('EXPLORATION');
 
         // Slide overlay out of view
         if (playOverlay) {
@@ -193,7 +206,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Unlock controls
         if (autoplayToggleBtn) autoplayToggleBtn.disabled = false;
         if (menuBtn) menuBtn.disabled = false;
-        modeButtons.forEach(btn => (btn.disabled = false));
+        if (runRestToggleBtn) runRestToggleBtn.disabled = false;
+        if (battleBtn) battleBtn.disabled = false;
         if (loadingIndicator) {
           loadingIndicator.innerText = "PLAYING";
           loadingIndicator.className = "status-pill ready";
@@ -217,15 +231,34 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 4. Mode Buttons Tap (Run, Rest, Battle)
-  modeButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
+  // 4. Combined Run/Rest Toggle Button Tap
+  if (runRestToggleBtn) {
+    runRestToggleBtn.addEventListener('click', () => {
       if (!hasStarted) return;
-      const targetMode = btn.getAttribute('data-mode');
+      const cue = getActiveCueInfo();
+      const current = (cue && cue.currentMode) ? cue.currentMode : lastSyncedMode;
+      // If currently in Rest mode, toggle to Run. Otherwise (Run or Battle), toggle to Rest.
+      const targetMode = (current === 'QUIET') ? 'EXPLORATION' : 'QUIET';
       changeGameMode(targetMode);
       updateActiveModeUi(targetMode);
     });
-  });
+  }
+
+  // Battle Button Tap
+  if (battleBtn) {
+    battleBtn.addEventListener('click', () => {
+      if (!hasStarted) return;
+      const cue = getActiveCueInfo();
+      const current = (cue && cue.currentMode) ? cue.currentMode : lastSyncedMode;
+      if (current === 'BATTLE' || current === 'BATTLE_INTRO') {
+        changeGameMode('EXPLORATION');
+        updateActiveModeUi('EXPLORATION');
+      } else {
+        changeGameMode('BATTLE');
+        updateActiveModeUi('BATTLE');
+      }
+    });
+  }
 
   // 5. Autoplay Toggle Tap (Off by default)
   if (autoplayToggleBtn) {
@@ -236,7 +269,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 6. Keyboard Shortcuts: Space for Play/Pause/Resume, M/ESC for Menu, 1/2/3 for Modes, A for Autoplay
+  // 6. Keyboard Shortcuts: Space for Play/Pause/Resume, M/ESC for Menu, 1/R for Run/Rest Toggle, 2/B for Battle, A for Autoplay
   window.addEventListener('keydown', (e) => {
     if (!hasStarted) return;
     const key = e.key.toLowerCase();
@@ -249,15 +282,22 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         openMenu();
       }
-    } else if (e.key === '1') {
-      changeGameMode('EXPLORATION');
-      updateActiveModeUi('EXPLORATION');
-    } else if (e.key === '2') {
-      changeGameMode('QUIET');
-      updateActiveModeUi('QUIET');
-    } else if (e.key === '3') {
-      changeGameMode('BATTLE');
-      updateActiveModeUi('BATTLE');
+    } else if (e.key === '1' || key === 'r') {
+      const cue = getActiveCueInfo();
+      const current = (cue && cue.currentMode) ? cue.currentMode : lastSyncedMode;
+      const targetMode = (current === 'QUIET') ? 'EXPLORATION' : 'QUIET';
+      changeGameMode(targetMode);
+      updateActiveModeUi(targetMode);
+    } else if (e.key === '2' || key === 'b') {
+      const cue = getActiveCueInfo();
+      const current = (cue && cue.currentMode) ? cue.currentMode : lastSyncedMode;
+      if (current === 'BATTLE' || current === 'BATTLE_INTRO') {
+        changeGameMode('EXPLORATION');
+        updateActiveModeUi('EXPLORATION');
+      } else {
+        changeGameMode('BATTLE');
+        updateActiveModeUi('BATTLE');
+      }
     } else if (key === 'a') {
       const enabled = toggleAutoPlay();
       updateAutoPlayUi(enabled);

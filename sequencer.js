@@ -1095,7 +1095,7 @@ export class HyruleSequencer {
           this.gains.exploreCore.gain.setValueAtTime(this.gains.exploreCore.gain.value, timelineTime);
           this.gains.exploreCore.gain.linearRampToValueAtTime(isIdle ? 0.85 : 1, timelineTime + fadeTime);
           this.gains.explorePercussion.gain.setValueAtTime(this.gains.explorePercussion.gain.value, timelineTime);
-          this.gains.explorePercussion.gain.linearRampToValueAtTime(isIdle ? 0.20 : 1, timelineTime + fadeTime);
+          this.gains.explorePercussion.gain.linearRampToValueAtTime(isIdle ? 0.0 : 1, timelineTime + fadeTime);
           this.gains.idleHarp.gain.setValueAtTime(this.gains.idleHarp.gain.value, timelineTime);
           this.gains.idleHarp.gain.linearRampToValueAtTime(isIdle ? 1 : 0, timelineTime + fadeTime);
 
@@ -1113,12 +1113,12 @@ export class HyruleSequencer {
 
           if (this.gains.exploreMelody) {
             this.gains.exploreMelody.gain.setValueAtTime(this.gains.exploreMelody.gain.value, timelineTime);
-            this.gains.exploreMelody.gain.linearRampToValueAtTime(0.50, timelineTime + fadeTime);
+            this.gains.exploreMelody.gain.linearRampToValueAtTime(0.0, timelineTime + fadeTime);
           }
           this.gains.explorePercussion.gain.setValueAtTime(this.gains.explorePercussion.gain.value, timelineTime);
-          this.gains.explorePercussion.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
+          this.gains.explorePercussion.gain.linearRampToValueAtTime(0.0, timelineTime + fadeTime);
           this.gains.idleHarp.gain.setValueAtTime(this.gains.idleHarp.gain.value, timelineTime);
-          this.gains.idleHarp.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
+          this.gains.idleHarp.gain.linearRampToValueAtTime(1.0, timelineTime + fadeTime);
           this.gains.exploreCore.gain.setValueAtTime(this.gains.exploreCore.gain.value, timelineTime);
           this.gains.exploreCore.gain.linearRampToValueAtTime(0.8, timelineTime + fadeTime);
 
@@ -1138,29 +1138,27 @@ export class HyruleSequencer {
         if (target === 'QUIET') {
           if (this.gains.exploreMelody) {
             this.gains.exploreMelody.gain.setValueAtTime(this.gains.exploreMelody.gain.value, timelineTime);
-            this.gains.exploreMelody.gain.linearRampToValueAtTime(0.50, timelineTime + fadeTime);
+            this.gains.exploreMelody.gain.linearRampToValueAtTime(0.0, timelineTime + fadeTime);
           }
           this.gains.exploreCore.gain.setValueAtTime(this.gains.exploreCore.gain.value, timelineTime);
           this.gains.exploreCore.gain.linearRampToValueAtTime(0.8, timelineTime + fadeTime);
           this.gains.explorePercussion.gain.setValueAtTime(this.gains.explorePercussion.gain.value, timelineTime);
-          this.gains.explorePercussion.gain.linearRampToValueAtTime(0, timelineTime + fadeTime);
+          this.gains.explorePercussion.gain.linearRampToValueAtTime(0.0, timelineTime + fadeTime);
           this.gains.idleHarp.gain.setValueAtTime(this.gains.idleHarp.gain.value, timelineTime);
-          this.gains.idleHarp.gain.linearRampToValueAtTime(1, timelineTime + fadeTime);
-          this.playTowerBell(timelineTime + 0.1);
-          this.playWolfosHowl(timelineTime + 2.2);
+          this.gains.idleHarp.gain.linearRampToValueAtTime(1.0, timelineTime + fadeTime);
           this.currentState = 'QUIET';
         } else {
           const isIdle = (this.linkMovementState === 'IDLE');
           if (this.gains.exploreMelody) {
             this.gains.exploreMelody.gain.setValueAtTime(this.gains.exploreMelody.gain.value, timelineTime);
-            this.gains.exploreMelody.gain.linearRampToValueAtTime(isIdle ? 0 : 1, timelineTime + fadeTime);
+            this.gains.exploreMelody.gain.linearRampToValueAtTime(isIdle ? 0.0 : 1.0, timelineTime + fadeTime);
           }
           this.gains.exploreCore.gain.setValueAtTime(this.gains.exploreCore.gain.value, timelineTime);
-          this.gains.exploreCore.gain.linearRampToValueAtTime(isIdle ? 0.85 : 1, timelineTime + fadeTime);
+          this.gains.exploreCore.gain.linearRampToValueAtTime(isIdle ? 0.85 : 1.0, timelineTime + fadeTime);
           this.gains.explorePercussion.gain.setValueAtTime(this.gains.explorePercussion.gain.value, timelineTime);
-          this.gains.explorePercussion.gain.linearRampToValueAtTime(isIdle ? 0.20 : 1, timelineTime + fadeTime);
+          this.gains.explorePercussion.gain.linearRampToValueAtTime(isIdle ? 0.0 : 1.0, timelineTime + fadeTime);
           this.gains.idleHarp.gain.setValueAtTime(this.gains.idleHarp.gain.value, timelineTime);
-          this.gains.idleHarp.gain.linearRampToValueAtTime(isIdle ? 1 : 0, timelineTime + fadeTime);
+          this.gains.idleHarp.gain.linearRampToValueAtTime(isIdle ? 1.0 : 0.0, timelineTime + fadeTime);
           this.currentState = 'EXPLORATION';
         }
       }
@@ -1645,6 +1643,11 @@ export class HyruleSequencer {
     // 2. Schedule Note Events strictly adhering to MIDI parameters
     // -------------------------------------------------------------------------
     this.midiData.tracks.forEach((track, trIdx) => {
+      // Remove bell doubling from the Morning intro (Track 26 / ch 12 Vibraphone/Bells): pure solo Ocarina only
+      if (chosenBlock === blockMap.MORNING && (trIdx === 26 || track.channel === 12)) {
+        return;
+      }
+
       const trackCategory = this.getTrackCategory(track, trIdx);
       const sampler = this.getSamplerForTrack(trIdx);
 
@@ -1660,13 +1663,12 @@ export class HyruleSequencer {
           ? note.duration
           : Math.max(0.04, (note.durationTicks / (endTicks - startTicks)) * blockDurationSec);
 
-        // Morning Dawn Ocarina & Bell doubling octave correction:
+        // Morning Dawn Ocarina octave correction:
         // In Bars 1–9, the MIDI transcription placed the Morning Dawn Ocarina (ch 11 / tr 25)
-        // and bell doubling (ch 12 / tr 26) an octave too high (up to G7 / 103), causing extreme
-        // high-frequency sample aliasing (dog whistle).
+        // an octave too high (up to G7 / 103), causing extreme high-frequency sample aliasing (dog whistle).
         // Transposing down 1 octave (-12 semitones: A5–G6) restores the warm, authentic N64 sweet spot.
         let playedNote = note;
-        if (chosenBlock === blockMap.MORNING && (track.channel === 11 || track.channel === 12 || trIdx === 25 || trIdx === 26)) {
+        if (chosenBlock === blockMap.MORNING && (track.channel === 11 || trIdx === 25)) {
           const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
           const lowerMidi = note.midi - 12;
           const lowerName = `${NOTE_NAMES[lowerMidi % 12]}${Math.floor(lowerMidi / 12) - 1}`;
@@ -1954,6 +1956,55 @@ export class HyruleSequencer {
           this.channelPanners[ch].pan.setValueAtTime((N64_ORCHESTRAL_PANS[ch] ?? 0.0) * (this.stereoWidth ?? 1.0), now);
         } catch (e) {}
       }
+    }
+  }
+
+  /**
+   * Instant-Mute Pause: eliminates lingering note tails, reverb feedback, and voice hangover
+   */
+  pausePlayback() {
+    // 1. Immediately pause Tone.Transport
+    const transport = Tone.getTransport();
+    if (transport && transport.state === 'started') {
+      transport.pause();
+    }
+
+    // 2. Instant mute to prevent residual ringing tails or reverb hangover
+    Tone.getDestination().mute = true;
+    if (this.masterPreBus) {
+      try {
+        this.masterPreBus.gain.cancelScheduledValues(Tone.now());
+        this.masterPreBus.gain.setValueAtTime(0, Tone.now());
+      } catch (e) {}
+    }
+
+    // 3. Immediately silence/release all active voices across all samplers
+    if (this.soundRack && this.soundRack.samplers) {
+      Object.values(this.soundRack.samplers).forEach(sampler => {
+        if (sampler && typeof sampler.releaseAll === 'function') {
+          try { sampler.releaseAll(Tone.now()); } catch (e) {}
+        }
+      });
+    }
+  }
+
+  /**
+   * Unmute and resume playback cleanly
+   */
+  resumePlayback() {
+    // 1. Unmute destination & restore masterPreBus
+    Tone.getDestination().mute = false;
+    if (this.masterPreBus) {
+      try {
+        this.masterPreBus.gain.cancelScheduledValues(Tone.now());
+        this.masterPreBus.gain.setValueAtTime(1.0, Tone.now());
+      } catch (e) {}
+    }
+
+    // 2. Resume Tone.Transport
+    const transport = Tone.getTransport();
+    if (transport && transport.state !== 'started') {
+      transport.start();
     }
   }
 
@@ -2333,6 +2384,14 @@ export function isAutoCycleEnabled() {
 
 export function getTimeOfDayInfo() {
   return null;
+}
+
+export function pausePlayback() {
+  if (sequencer) sequencer.pausePlayback();
+}
+
+export function resumePlayback() {
+  if (sequencer) sequencer.resumePlayback();
 }
 
 
