@@ -53,17 +53,19 @@ body {
     overflow-x: hidden;
 }
 
-/* Play Button Overlay */
+/* Educational Intro Card & Start Overlay (Single page, no scrolling) */
 .play-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(8, 12, 16, 0.92);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: rgba(8, 12, 16, 0.94);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
     z-index: 100;
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 1rem;
+    box-sizing: border-box;
     transition: opacity 0.5s ease, transform 0.5s ease;
 }
 
@@ -73,17 +75,53 @@ body {
     pointer-events: none;
 }
 
-.start-btn {
-    background: rgba(22, 30, 42, 0.9);
-    border: 1px solid rgba(250, 204, 21, 0.4);
-    border-radius: 9999px;
-    padding: 1.1rem 2.4rem;
-    color: #94a3b8;
-    cursor: not-allowed;
+.intro-card {
+    max-width: 580px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 0.5rem 1rem;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.35rem;
+    text-align: center;
+    box-sizing: border-box;
+    background: transparent;
+    border: none;
+}
+
+.intro-title {
+    font-size: 1.3rem;
+    font-weight: 800;
+    letter-spacing: 0.4px;
+    color: #f8fafc;
+    margin-bottom: 0.75rem;
+    line-height: 1.25;
+}
+
+.intro-text {
+    font-size: 0.84rem;
+    line-height: 1.48;
+    color: #94a3b8;
+    margin-bottom: 0.65rem;
+    text-align: left;
+}
+
+.intro-text em {
+    color: #f1f5f9;
+    font-style: italic;
+}
+
+.start-btn {
+    margin-top: 0.65rem;
+    background: rgba(22, 30, 42, 0.9);
+    border: 1px solid rgba(250, 204, 21, 0.4);
+    border-radius: 9999px;
+    padding: 0.75rem 2.5rem;
+    color: #94a3b8;
+    cursor: not-allowed;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     font-family: inherit;
     transition: all 0.25s ease;
     user-select: none;
@@ -95,7 +133,7 @@ body {
     border-color: var(--gold);
     color: var(--gold);
     cursor: pointer;
-    box-shadow: 0 0 30px var(--gold-glow);
+    box-shadow: 0 0 25px var(--gold-glow);
     animation: startPulse 2s infinite ease-in-out;
 }
 
@@ -109,24 +147,10 @@ body {
     transform: scale(0.98);
 }
 
-.start-btn-inner {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
 .start-btn-text {
-    font-size: 1.05rem;
+    font-size: 0.95rem;
     font-weight: 800;
-    letter-spacing: 1.5px;
-}
-
-.start-subtext {
-    font-size: 0.72rem;
-    font-weight: 600;
     letter-spacing: 1.2px;
-    color: #94a3b8;
-    text-transform: uppercase;
 }
 
 @keyframes startPulse {
@@ -492,7 +516,132 @@ body {
 .dot.blue { background: var(--blue-night); }
 .dot.red { background: var(--red-battle); }
 
+/* Player Controls - Borderless, Clean & Modern */
+.player-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 1.5rem 0.8rem 1.5rem;
+    width: 100%;
+    box-sizing: border-box;
+    gap: 1rem;
+    background: transparent;
+    border: none;
+}
+
+.mode-button-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: transparent;
+}
+
+.mode-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    padding: 0.45rem 1rem;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+    line-height: 1.2;
+    user-select: none;
+}
+
+.mode-btn:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.mode-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.mode-btn.mode-adventure.active {
+    color: var(--green-day);
+    background: rgba(34, 197, 94, 0.12);
+    font-weight: 700;
+}
+
+.mode-btn.mode-rest.active {
+    color: var(--blue-night);
+    background: rgba(56, 189, 248, 0.12);
+    font-weight: 700;
+}
+
+.mode-btn.mode-battle.active {
+    color: var(--red-battle);
+    background: rgba(239, 68, 68, 0.12);
+    font-weight: 700;
+}
+
+.link-toggle-btn {
+    background: transparent;
+    border: none;
+    padding: 0.45rem 1rem;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+    line-height: 1.2;
+    user-select: none;
+}
+
+.link-toggle-btn.running {
+    color: var(--green-day);
+    background: rgba(34, 197, 94, 0.1);
+}
+
+.link-toggle-btn.resting,
+.link-toggle-btn.idle {
+    color: #94a3b8;
+    background: rgba(148, 163, 184, 0.08);
+}
+
+.link-toggle-btn:hover {
+    filter: brightness(1.2);
+}
+
+.link-toggle-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
 /* Responsive adjustments across mobile & tablet */
+@media (max-width: 540px) {
+    .player-controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.5rem;
+        padding: 0.4rem 1rem 0.6rem 1rem;
+    }
+
+    .mode-button-group {
+        justify-content: space-between;
+    }
+
+    .mode-btn {
+        flex: 1;
+        text-align: center;
+        padding: 0.4rem 0.5rem;
+        font-size: 0.78rem;
+    }
+
+    .link-toggle-btn {
+        text-align: center;
+        padding: 0.4rem 0.5rem;
+        font-size: 0.78rem;
+    }
+}
+
 @media (max-width: 480px) {
     .console-header {
         padding: 0.4rem 1rem;
@@ -511,5 +660,27 @@ body {
     .viewport-legend {
         padding: 0.3rem 1rem;
         font-size: 0.65rem;
+    }
+}
+
+@media (max-height: 680px) {
+    .intro-card {
+        padding: 0.25rem 0.5rem;
+    }
+    .intro-title {
+        font-size: 1.1rem;
+        margin-bottom: 0.4rem;
+    }
+    .intro-text {
+        font-size: 0.75rem;
+        line-height: 1.35;
+        margin-bottom: 0.4rem;
+    }
+    .start-btn {
+        margin-top: 0.35rem;
+        padding: 0.55rem 1.8rem;
+    }
+    .start-btn-text {
+        font-size: 0.85rem;
     }
 }

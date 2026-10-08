@@ -12,6 +12,12 @@ import {
   setMixerParameter,
   setMixerPreset,
   getMixerSettings,
+  toggleLinkMovement,
+  setLinkMovement,
+  getLinkMovementState,
+  setAutoPlay,
+  toggleAutoPlay,
+  isAutoPlayEnabled,
   setRandomizer,
   toggleRandomizer,
   isRandomizerEnabled,
@@ -26,7 +32,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const startBtn = document.getElementById('start-btn');
   const startBtnLabel = document.getElementById('start-btn-label');
   const loadingIndicator = document.getElementById('loading-indicator');
-  const playPauseBtn = document.getElementById('play-pause-btn');
+  const autoplayToggleBtn = document.getElementById('autoplay-toggle-btn');
+  const modeButtons = document.querySelectorAll('.mode-btn');
+  const movementToggleBtn = document.getElementById('movement-toggle-btn');
   const canvas = document.getElementById('note-stream-canvas');
   const ctx = canvas ? canvas.getContext('2d') : null;
 
@@ -49,9 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const valVolume = document.getElementById('val-volume');
 
   let hasStarted = false;
-
-  // Random Mode Cycling DOM Elements
-  const randomToggleBtn = document.getElementById('random-toggle-btn');
+  let lastSyncedMode = 'EXPLORATION';
 
   // 1. Audio Loading Lifecycle
   whenAudioLoaded()
@@ -62,7 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       if (startBtn && !hasStarted) {
         startBtn.disabled = false;
-        if (startBtnLabel) startBtnLabel.innerText = "ENTER HYRULE";
+        if (startBtnLabel) startBtnLabel.innerText = "Begin";
         startBtn.classList.add('ready');
       }
     })
@@ -74,6 +80,58 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       if (startBtnLabel) startBtnLabel.innerText = "ERROR LOADING";
     });
+
+  // Mode Selection UI Updater
+  function updateActiveModeUi(currentMode) {
+    modeButtons.forEach(btn => {
+      const mode = btn.getAttribute('data-mode');
+      if (mode === currentMode || (currentMode === 'BATTLE_INTRO' && mode === 'BATTLE') || (currentMode === 'BATTLE_OUTRO' && mode === 'BATTLE')) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+  }
+
+  // Link Movement UI Updater
+  function updateMovementUi(state) {
+    if (!movementToggleBtn) return;
+    if (state === 'RUNNING') {
+      movementToggleBtn.className = 'link-toggle-btn running';
+      movementToggleBtn.innerText = 'Link: Running';
+    } else {
+      movementToggleBtn.className = 'link-toggle-btn resting';
+      movementToggleBtn.innerText = 'Link: Resting';
+    }
+  }
+
+  // Autoplay UI Updater
+  function updateAutoPlayUi(enabled) {
+    if (autoplayToggleBtn) {
+      autoplayToggleBtn.classList.toggle('active', enabled);
+      autoplayToggleBtn.classList.toggle('inactive', !enabled);
+      autoplayToggleBtn.innerText = enabled ? "AUTOPLAY: ON" : "AUTOPLAY: OFF";
+    }
+  }
+
+  // Play / Pause internal logic (preserved for keyboard shortcuts & future features)
+  function togglePlayPause() {
+    if (!hasStarted) return;
+    const transport = Tone.getTransport();
+    if (transport.state === 'started') {
+      transport.pause();
+      if (loadingIndicator) {
+        loadingIndicator.innerText = "PAUSED";
+        loadingIndicator.className = "status-pill";
+      }
+    } else {
+      transport.start();
+      if (loadingIndicator) {
+        loadingIndicator.innerText = "PLAYING";
+        loadingIndicator.className = "status-pill ready";
+      }
+    }
+  }
 
   // 2. Play Button Overlay Tap
   if (startBtn) {
@@ -93,12 +151,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 500);
       }
 
-      // Unlock header actions
-      if (playPauseBtn) {
-        playPauseBtn.disabled = false;
-        playPauseBtn.innerText = "PAUSE";
+      // Unlock controls
+      if (autoplayToggleBtn) autoplayToggleBtn.disabled = false;
+      modeButtons.forEach(btn => (btn.disabled = false));
+      if (movementToggleBtn) {
+        movementToggleBtn.disabled = false;
+        updateMovementUi(getLinkMovementState());
       }
-      if (randomToggleBtn) randomToggleBtn.disabled = false;
       if (loadingIndicator) {
         loadingIndicator.innerText = "PLAYING";
         loadingIndicator.className = "status-pill ready";
@@ -106,55 +165,56 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 3. Play / Pause Header Control
-  if (playPauseBtn) {
-    playPauseBtn.addEventListener('click', () => {
+  // 3. Mode Buttons Tap
+  modeButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
       if (!hasStarted) return;
-      const transport = Tone.getTransport();
-      if (transport.state === 'started') {
-        transport.pause();
-        playPauseBtn.innerText = "PLAY";
-        if (loadingIndicator) {
-          loadingIndicator.innerText = "PAUSED";
-          loadingIndicator.className = "status-pill";
-        }
-      } else {
-        transport.start();
-        playPauseBtn.innerText = "PAUSE";
-        if (loadingIndicator) {
-          loadingIndicator.innerText = "PLAYING";
-          loadingIndicator.className = "status-pill ready";
-        }
-      }
+      const targetMode = btn.getAttribute('data-mode');
+      changeGameMode(targetMode);
+      updateActiveModeUi(targetMode);
+    });
+  });
+
+  // 4. Link Movement Toggle Tap
+  if (movementToggleBtn) {
+    movementToggleBtn.addEventListener('click', () => {
+      if (!hasStarted) return;
+      const next = toggleLinkMovement();
+      updateMovementUi(next);
     });
   }
 
-  // 4. Simple Mode Randomizer Toggle Button Tap
-  function updateRandomizerUi(enabled) {
-    if (randomToggleBtn) {
-      randomToggleBtn.classList.toggle('active', enabled);
-      randomToggleBtn.classList.toggle('inactive', !enabled);
-      randomToggleBtn.innerText = enabled ? "RANDOM: ON" : "RANDOM: OFF";
-    }
-  }
-
-  if (randomToggleBtn) {
-    randomToggleBtn.addEventListener('click', () => {
-      const enabled = toggleRandomizer();
-      updateRandomizerUi(enabled);
+  // 5. Autoplay Toggle Tap (Off by default)
+  if (autoplayToggleBtn) {
+    updateAutoPlayUi(isAutoPlayEnabled());
+    autoplayToggleBtn.addEventListener('click', () => {
+      const enabled = toggleAutoPlay();
+      updateAutoPlayUi(enabled);
     });
   }
 
-  // 5. Keyboard Shortcuts: Space for Play/Pause, R for Random Mode
+  // 6. Keyboard Shortcuts: Space for Play/Pause, 1/2/3 for Modes, L/M for Link Movement, A for Autoplay
   window.addEventListener('keydown', (e) => {
     if (!hasStarted) return;
     const key = e.key.toLowerCase();
     if (e.code === 'Space' || e.key === ' ') {
       e.preventDefault();
-      if (playPauseBtn) playPauseBtn.click();
-    } else if (key === 'r') {
-      const enabled = toggleRandomizer();
-      updateRandomizerUi(enabled);
+      togglePlayPause();
+    } else if (e.key === '1') {
+      changeGameMode('EXPLORATION');
+      updateActiveModeUi('EXPLORATION');
+    } else if (e.key === '2') {
+      changeGameMode('QUIET');
+      updateActiveModeUi('QUIET');
+    } else if (e.key === '3') {
+      changeGameMode('BATTLE');
+      updateActiveModeUi('BATTLE');
+    } else if (key === 'l' || key === 'm') {
+      const next = toggleLinkMovement();
+      updateMovementUi(next);
+    } else if (key === 'a') {
+      const enabled = toggleAutoPlay();
+      updateAutoPlayUi(enabled);
     }
   });
 
@@ -416,6 +476,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const cueInfo = getActiveCueInfo();
+
+    // Sync active mode button UI when mode changes (e.g. via Autoplay or deferred branch)
+    if (cueInfo && cueInfo.currentMode && cueInfo.currentMode !== lastSyncedMode) {
+      lastSyncedMode = cueInfo.currentMode;
+      updateActiveModeUi(lastSyncedMode);
+    }
 
     // Draw Note Stream Canvas
     if (canvas && ctx) {

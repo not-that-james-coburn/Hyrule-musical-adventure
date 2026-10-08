@@ -324,8 +324,8 @@ export class HyruleSequencer {
     // History and scheduled timeline of blocks for accurate runtime measure lines
     this.blockHistory = [];
 
-    // Simple Mode Randomizer Engine (Adventure, Rest, Battle)
-    this.randomizerEnabled = true;
+    // Autoplay / Randomizer Mode Engine (Adventure, Rest, Battle) - turned off by default
+    this.randomizerEnabled = false;
     this.currentModeBlocksRemaining = 0;
 
     this.isInitialized = false;
@@ -1012,9 +1012,6 @@ export class HyruleSequencer {
     this.linkMovementState = state;
     if (this.currentState === 'EXPLORATION') {
       this.executeMovementCrossfade(state);
-      if (state === 'IDLE') {
-        this.playPrairieWind(Tone.now() + 0.15);
-      }
     }
   }
 
@@ -1166,6 +1163,9 @@ export class HyruleSequencer {
     }
 
     // EXPLORATION:
+    if (this.currentBlock === blockMap.INTRO && targetState === 'EXPLORATION') {
+      return blockMap.EXPLORATION[0]; // Day 1 Main Theme
+    }
     // If still in startup sequence, advance through Day 1
     if (this.initialSequenceStage === 2) {
       this.initialSequenceStage = 3;
@@ -2242,6 +2242,18 @@ export function isRandomizerEnabled() {
 
 export function getRandomizerInfo() {
   return sequencer.getRandomizerInfo();
+}
+
+export function setAutoPlay(enabled) {
+  return sequencer.setRandomizer(enabled);
+}
+
+export function toggleAutoPlay() {
+  return sequencer.toggleRandomizer();
+}
+
+export function isAutoPlayEnabled() {
+  return sequencer.isRandomizerEnabled();
 }
 
 export function setAutoCycle(enabled) {

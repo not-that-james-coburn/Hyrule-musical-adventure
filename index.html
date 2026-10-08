@@ -15,14 +15,23 @@
 </head>
 <body>
     <main class="nintendo-console">
-        <!-- Play Button Overlay on Load -->
+        <!-- Educational Intro & Start Overlay -->
         <div id="play-overlay" class="play-overlay">
-            <button id="start-btn" class="start-btn" disabled>
-                <div class="start-btn-inner">
-                    <span id="start-btn-label" class="start-btn-text">LOADING SAMPLES...</span>
-                </div>
-                <span class="start-subtext">ENTER HYRULE</span>
-            </button>
+            <div class="intro-card">
+                <h1 class="intro-title">The Interactive Music of Hyrule Field</h1>
+                <p class="intro-text">
+                    This project recreates and visualizes the pioneering interactive soundtrack of <em>The Legend of Zelda: Ocarina of Time</em> (1998). Powered by authentic Nintendo 64 soundfont instruments and real-time Web Audio synthesis, every orchestral voice is performed live in your browser.
+                </p>
+                <p class="intro-text">
+                    Composer Koji Kondo designed Hyrule Field as video game history's landmark dynamic score. Rather than playing a looping recording, the music branches across modular 8-measure phrases that adapt to player actions—transitioning smoothly between expansive exploration themes, tense battle fanfares when enemies draw near, and serene campfire rest melodies.
+                </p>
+                <p class="intro-text">
+                    When Link halts, the heroic brass melody fades to leave gentle pastoral harp chords. Use the controls below to steer the musical path manually, or turn on Autoplay to let the score evolve on its own.
+                </p>
+                <button id="start-btn" class="start-btn" disabled>
+                    <span id="start-btn-label" class="start-btn-text">Loading...</span>
+                </button>
+            </div>
         </div>
 
         <!-- Top Navigation / Header -->
@@ -31,8 +40,7 @@
                 <span class="brand-text">HYRULE FIELD</span>
             </div>
             <div class="header-actions">
-                <button id="play-pause-btn" class="header-btn" aria-label="Toggle Play/Pause" title="Play or Pause Playback" disabled>PAUSE</button>
-                <button id="random-toggle-btn" class="header-btn active" aria-label="Toggle Random Mode Cycling" title="Toggle Random Mode Cycling [R]">RANDOM: ON</button>
+                <button id="autoplay-toggle-btn" class="header-btn inactive" aria-label="Toggle Autoplay Cycling" title="Toggle Autoplay Mode Cycling [A]">AUTOPLAY: OFF</button>
                 <button id="mixer-toggle-btn" class="header-btn" aria-label="Toggle Sound Mixer" title="Audio Mixer">SOUND</button>
                 <div id="loading-indicator" class="status-pill loading">Loading...</div>
             </div>
@@ -122,6 +130,16 @@
                 <span class="dot red"></span><span>Battle</span>
             </div>
         </div>
+
+        <!-- Player Controls: Mode Selector & Link Movement Toggle -->
+        <nav class="player-controls" aria-label="Game Mode Controls">
+            <div class="mode-button-group">
+                <button class="mode-btn mode-adventure active" data-mode="EXPLORATION" title="Adventure Mode [1]">Adventure</button>
+                <button class="mode-btn mode-rest" data-mode="QUIET" title="Rest Mode [2]">Rest</button>
+                <button class="mode-btn mode-battle" data-mode="BATTLE" title="Battle Mode [3]">Battle</button>
+            </div>
+            <button id="movement-toggle-btn" class="link-toggle-btn running" title="Toggle Link Running vs. Resting [L]">Link: Running</button>
+        </nav>
     </main>
 
     <script type="module" src="main.js"></script>
