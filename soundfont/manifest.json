@@ -1,13 +1,25 @@
 {
-  "Flute": {
-    "file": "soundfont/Flute.wav",
-    "pitch": 79,
+  "Ocarina": {
+    "file": "soundfont/Ocarina.wav",
+    "pitch": 80,
     "sampleRate": 32000,
     "cents": 0
   },
-  "Oboe": {
-    "file": "soundfont/Oboe.wav",
-    "pitch": 76,
+  "Piccolo": {
+    "file": "soundfont/Piccolo.wav",
+    "pitch": 91,
+    "sampleRate": 32000,
+    "cents": 0
+  },
+  "Flute": {
+    "file": "soundfont/Piccolo.wav",
+    "pitch": 91,
+    "sampleRate": 32000,
+    "cents": 0
+  },
+  "Flute Pad": {
+    "file": "soundfont/Flute_Pad.wav",
+    "pitch": 54,
     "sampleRate": 32000,
     "cents": 0
   },
@@ -17,9 +29,21 @@
     "sampleRate": 32000,
     "cents": 0
   },
+  "Oboe": {
+    "file": "soundfont/Oboe.wav",
+    "pitch": 76,
+    "sampleRate": 32000,
+    "cents": 0
+  },
   "Bassoon": {
     "file": "soundfont/Bassoon.wav",
     "pitch": 45,
+    "sampleRate": 32000,
+    "cents": 0
+  },
+  "Accordion": {
+    "file": "soundfont/Accordion.wav",
+    "pitch": 72,
     "sampleRate": 32000,
     "cents": 0
   },
@@ -35,27 +59,15 @@
     "sampleRate": 32000,
     "cents": 0
   },
-  "Trombone": {
-    "file": "soundfont/Trombone.wav",
+  "Trumpet Soprano": {
+    "file": "soundfont/Trumpet_Soprano.wav",
     "pitch": 67,
     "sampleRate": 32000,
     "cents": 0
   },
-  "Tuba": {
-    "file": "soundfont/Tuba.wav",
+  "Trombone": {
+    "file": "soundfont/Trombone.wav",
     "pitch": 40,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Glockenspiel": {
-    "file": "soundfont/Glockenspiel.wav",
-    "pitch": 71,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Strings High": {
-    "file": "soundfont/Strings_High.wav",
-    "pitch": 68,
     "sampleRate": 32000,
     "cents": 0
   },
@@ -71,9 +83,27 @@
     "sampleRate": 32000,
     "cents": 0
   },
-  "Pizzicato High": {
-    "file": "soundfont/Pizzicato_High.wav",
-    "pitch": 70,
+  "Strings High": {
+    "file": "soundfont/Strings_High.wav",
+    "pitch": 68,
+    "sampleRate": 32000,
+    "cents": 0
+  },
+  "Strings": {
+    "file": "soundfont/Strings_High.wav",
+    "pitch": 68,
+    "sampleRate": 32000,
+    "cents": 0
+  },
+  "String Pad": {
+    "file": "soundfont/String_Pad.wav",
+    "pitch": 65,
+    "sampleRate": 32000,
+    "cents": 0
+  },
+  "Pad": {
+    "file": "soundfont/String_Pad.wav",
+    "pitch": 65,
     "sampleRate": 32000,
     "cents": 0
   },
@@ -83,9 +113,15 @@
     "sampleRate": 32000,
     "cents": 0
   },
-  "Piano High": {
-    "file": "soundfont/Piano_High.wav",
-    "pitch": 72,
+  "Pizzicato High": {
+    "file": "soundfont/Pizzicato_High.wav",
+    "pitch": 70,
+    "sampleRate": 32000,
+    "cents": 0
+  },
+  "Guitar Bass": {
+    "file": "soundfont/Guitar_Bass.wav",
+    "pitch": 41,
     "sampleRate": 32000,
     "cents": 0
   },
@@ -93,7 +129,7 @@
     "file": "soundfont/Piano_Low.wav",
     "pitch": 45,
     "sampleRate": 32000,
-    "cents": 0
+    "cents": -40
   },
   "Piano Middle": {
     "file": "soundfont/Piano_Middle.wav",
@@ -101,9 +137,15 @@
     "sampleRate": 32000,
     "cents": 0
   },
-  "Harp High": {
-    "file": "soundfont/Harp_High.wav",
-    "pitch": 77,
+  "Piano": {
+    "file": "soundfont/Piano_Middle.wav",
+    "pitch": 60,
+    "sampleRate": 32000,
+    "cents": 0
+  },
+  "Piano High": {
+    "file": "soundfont/Piano_High.wav",
+    "pitch": 72,
     "sampleRate": 32000,
     "cents": 0
   },
@@ -113,9 +155,15 @@
     "sampleRate": 32000,
     "cents": 0
   },
-  "Marimba High": {
-    "file": "soundfont/Marimba_High.wav",
-    "pitch": 74,
+  "Harp High": {
+    "file": "soundfont/Harp_High.wav",
+    "pitch": 77,
+    "sampleRate": 32000,
+    "cents": 0
+  },
+  "Harp": {
+    "file": "soundfont/Harp_High.wav",
+    "pitch": 77,
     "sampleRate": 32000,
     "cents": 0
   },
@@ -125,9 +173,45 @@
     "sampleRate": 32000,
     "cents": 0
   },
-  "Cymbal Hit": {
-    "file": "soundfont/Cymbal_Hit.wav",
+  "Marimba High": {
+    "file": "soundfont/Marimba_High.wav",
+    "pitch": 74,
+    "sampleRate": 32000,
+    "cents": 0
+  },
+  "Glockenspiel": {
+    "file": "soundfont/Glockenspiel.wav",
+    "pitch": 83,
+    "sampleRate": 32000,
+    "cents": 0
+  },
+  "Bell": {
+    "file": "soundfont/Glockenspiel.wav",
+    "pitch": 83,
+    "sampleRate": 32000,
+    "cents": 0
+  },
+  "Timpani": {
+    "file": "soundfont/Timpani.wav",
     "pitch": 60,
+    "sampleRate": 32000,
+    "cents": 0
+  },
+  "Timpani High": {
+    "file": "soundfont/Timpani.wav",
+    "pitch": 60,
+    "sampleRate": 32000,
+    "cents": 0
+  },
+  "Timpani Low": {
+    "file": "soundfont/Timpani.wav",
+    "pitch": 60,
+    "sampleRate": 32000,
+    "cents": 0
+  },
+  "Snare Low": {
+    "file": "soundfont/Snare_Low.wav",
+    "pitch": 48,
     "sampleRate": 32000,
     "cents": 0
   },
@@ -137,440 +221,52 @@
     "sampleRate": 32000,
     "cents": 0
   },
-  "Snare Low": {
-    "file": "soundfont/Snare_Low.wav",
-    "pitch": 59,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Timpani High": {
-    "file": "soundfont/Timpani_High.wav",
-    "pitch": 75,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Timpani Low": {
-    "file": "soundfont/Timpani_Low.wav",
+  "Snare": {
+    "file": "soundfont/Snare_High.wav",
     "pitch": 60,
     "sampleRate": 32000,
     "cents": 0
   },
-  "Pad": {
-    "file": "soundfont/Pad.wav",
-    "pitch": 55,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Koto High": {
-    "file": "soundfont/Koto_High.wav",
-    "pitch": 62,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Koto Low": {
-    "file": "soundfont/Koto_Low.wav",
-    "pitch": 50,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Ocarina": {
-    "file": "soundfont/Ocarina.wav",
-    "pitch": 68,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Tambourine Kit 1": {
-    "file": "soundfont/Tambourine_Kit_1.wav",
+  "Cymbal Hit": {
+    "file": "soundfont/Cymbal_Hit.wav",
     "pitch": 72,
     "sampleRate": 32000,
     "cents": 0
   },
-  "Tambourine Kit 2": {
-    "file": "soundfont/Tambourine_Kit_2.wav",
-    "pitch": 60,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Tambourine Kit 3": {
-    "file": "soundfont/Tambourine_Kit_3.wav",
-    "pitch": 60,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Wind Cricket": {
-    "file": "soundfont/Wind_Cricket.wav",
-    "pitch": 60,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Synth Strings": {
-    "file": "soundfont/Synth_Strings.wav",
-    "pitch": 60,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Creeking": {
-    "file": "soundfont/Creeking.wav",
-    "pitch": 60,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Beat Kit 1": {
-    "file": "soundfont/Beat_Kit_1.wav",
-    "pitch": 75,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Beat Kit 2": {
-    "file": "soundfont/Beat_Kit_2.wav",
-    "pitch": 49,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Harmonica": {
-    "file": "soundfont/Harmonica.wav",
-    "pitch": 68,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Guitar High": {
-    "file": "soundfont/Guitar_High.wav",
-    "pitch": 75,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Guitar Low": {
-    "file": "soundfont/Guitar_Low.wav",
-    "pitch": 56,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Accordion": {
-    "file": "soundfont/Accordion.wav",
-    "pitch": 60,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Male Choir High": {
-    "file": "soundfont/Male_Choir_High.wav",
-    "pitch": 66,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Male Choir Low": {
-    "file": "soundfont/Male_Choir_Low.wav",
-    "pitch": 60,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Bell": {
-    "file": "soundfont/Bell.wav",
-    "pitch": 62,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Female Choir High": {
-    "file": "soundfont/Female_Choir_High.wav",
-    "pitch": 77,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Female Choir Low": {
-    "file": "soundfont/Female_Choir_Low.wav",
-    "pitch": 71,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Kalimba": {
-    "file": "soundfont/Kalimba.wav",
-    "pitch": 60,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Lute Kit 1": {
-    "file": "soundfont/Lute_Kit_1.wav",
-    "pitch": 64,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Lute Kit 2": {
-    "file": "soundfont/Lute_Kit_2.wav",
-    "pitch": 65,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Wind": {
-    "file": "soundfont/Wind.wav",
-    "pitch": 66,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Famous DC Sound": {
-    "file": "soundfont/Famous_DC_Sound.wav",
-    "pitch": 66,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Noise": {
-    "file": "soundfont/Noise.wav",
-    "pitch": 60,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Wind Roar": {
-    "file": "soundfont/Wind_Roar.wav",
-    "pitch": 60,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Wood Chimes": {
-    "file": "soundfont/Wood_Chimes.wav",
-    "pitch": 84,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Shine": {
-    "file": "soundfont/Shine.wav",
-    "pitch": 53,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Famous Wood Chime": {
-    "file": "soundfont/Famous_Wood_Chime.wav",
-    "pitch": 59,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Multipitch Flute 1": {
-    "file": "soundfont/Multipitch_Flute_1.wav",
-    "pitch": 56,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Multipitch Flute 2": {
-    "file": "soundfont/Multipitch_Flute_2.wav",
-    "pitch": 40,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Multipitch Flute 3": {
-    "file": "soundfont/Multipitch_Flute_3.wav",
-    "pitch": 68,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Voice Pad": {
-    "file": "soundfont/Voice_Pad.wav",
-    "pitch": 65,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Clocktown Bell": {
-    "file": "soundfont/Clocktown_Bell.wav",
-    "pitch": 60,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Fiddle": {
-    "file": "soundfont/Fiddle.wav",
-    "pitch": 69,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Jazz Guitar High": {
-    "file": "soundfont/Jazz_Guitar_High.wav",
-    "pitch": 79,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Jazz Guitar Low": {
-    "file": "soundfont/Jazz_Guitar_Low.wav",
-    "pitch": 45,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Jazz Guitar Middle": {
-    "file": "soundfont/Jazz_Guitar_Middle.wav",
-    "pitch": 60,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Malon": {
-    "file": "soundfont/Malon.wav",
-    "pitch": 74,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Bent Drum": {
-    "file": "soundfont/Bent_Drum.wav",
-    "pitch": 60,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Conga Slap": {
-    "file": "soundfont/Conga_Slap.wav",
-    "pitch": 60,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Conga Mute": {
-    "file": "soundfont/Conga_Mute.wav",
-    "pitch": 60,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Cuica Close": {
-    "file": "soundfont/Cuica_Close.wav",
-    "pitch": 60,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Cuica Open": {
-    "file": "soundfont/Cuica_Open.wav",
-    "pitch": 60,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Gong": {
-    "file": "soundfont/Gong.wav",
-    "pitch": 41,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Wind Chimes": {
-    "file": "soundfont/Wind_Chimes.wav",
-    "pitch": 72,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Ethnic Flute": {
-    "file": "soundfont/Ethnic_Flute.wav",
-    "pitch": 74,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Bell Pad": {
-    "file": "soundfont/Bell_Pad.wav",
-    "pitch": 63,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Chant 1": {
-    "file": "soundfont/Chant_1.wav",
-    "pitch": 72,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Chant 2": {
-    "file": "soundfont/Chant_2.wav",
-    "pitch": 60,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Chant 3": {
-    "file": "soundfont/Chant_3.wav",
-    "pitch": 96,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Harpsichord": {
-    "file": "soundfont/Harpsichord.wav",
-    "pitch": 55,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Ethnic Drum Kit 1": {
-    "file": "soundfont/Ethnic_Drum_Kit_1.wav",
-    "pitch": 41,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Ethnic Drum Kit 2": {
-    "file": "soundfont/Ethnic_Drum_Kit_2.wav",
-    "pitch": 36,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Ethnic Drum Kit 3": {
-    "file": "soundfont/Ethnic_Drum_Kit_3.wav",
-    "pitch": 47,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Banjo Low": {
-    "file": "soundfont/Banjo_Low.wav",
-    "pitch": 50,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Banjo High": {
-    "file": "soundfont/Banjo_High.wav",
-    "pitch": 57,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Acoustic Guitar": {
-    "file": "soundfont/Acoustic_Guitar.wav",
-    "pitch": 45,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Shaker": {
-    "file": "soundfont/Shaker.wav",
-    "pitch": 60,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Conga Open": {
-    "file": "soundfont/Conga_Open.wav",
-    "pitch": 60,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Cowbell": {
-    "file": "soundfont/Cowbell.wav",
-    "pitch": 60,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Clap": {
-    "file": "soundfont/Clap.wav",
-    "pitch": 72,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Organ High": {
-    "file": "soundfont/Organ_High.wav",
-    "pitch": 72,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Organ Low": {
-    "file": "soundfont/Organ_Low.wav",
-    "pitch": 60,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Steel Drum High": {
-    "file": "soundfont/Steel_Drum_High.wav",
-    "pitch": 74,
-    "sampleRate": 32000,
-    "cents": 0
-  },
-  "Steel Drum Low": {
-    "file": "soundfont/Steel_Drum_Low.wav",
+  "Hi Hat": {
+    "file": "soundfont/Hi_Hat.wav",
     "pitch": 60,
     "sampleRate": 32000,
     "cents": 0
   },
   "Kick Drum": {
-    "file": "soundfont/Beat_Kit_1.wav",
+    "file": "soundfont/Kick_Drum.wav",
     "pitch": 36,
-    "sampleRate": 32000
+    "sampleRate": 32000,
+    "cents": 0
   },
   "Ethnic Kick": {
-    "file": "soundfont/Ethnic_Drum_Kit_2.wav",
+    "file": "soundfont/Kick_Drum.wav",
     "pitch": 36,
-    "sampleRate": 32000
+    "sampleRate": 32000,
+    "cents": 0
+  },
+  "Bent Drum": {
+    "file": "soundfont/Bent_Drum.wav",
+    "pitch": 48,
+    "sampleRate": 32000,
+    "cents": 0
+  },
+  "Ethnic Drum Kit 1": {
+    "file": "soundfont/Ethnic_Drum_Kit_1.wav",
+    "pitch": 60,
+    "sampleRate": 32000,
+    "cents": 0
+  },
+  "Ethnic Drum Kit 2": {
+    "file": "soundfont/Ethnic_Drum_Kit_2.wav",
+    "pitch": 72,
+    "sampleRate": 32000,
+    "cents": 0
   }
 }
