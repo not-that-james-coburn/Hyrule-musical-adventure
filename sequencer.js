@@ -452,12 +452,11 @@ export class HyruleSequencer {
         }
       }
 
-      // 4. Natural Vibrato LFO on Lead Solo Instruments (N64 Audioseq pitch modulation)
-      // Subtle 5.5 Hz vibrato with 0.14 depth (~18-20 cents) on Flute (Ch 5) & Ocarina (Ch 11)
+      // 4. Natural Vibrato LFO on Flute (Ch 5)
+      // Note: Ocarina (Ch 11) uses its authentic SoundFont embedded acoustic vibrato directly
+      // to avoid Web Audio DelayNode phase tearing and high-frequency crackle.
       this.channelVibratos[5] = new Tone.Vibrato({ frequency: 5.5, depth: 0.14, type: 'sine' });
-      this.channelVibratos[11] = new Tone.Vibrato({ frequency: 5.5, depth: 0.14, type: 'sine' });
       this.channelVibratos[5].connect(this.channelGains[5]);
-      this.channelVibratos[11].connect(this.channelGains[11]);
 
       // 5. Atmospheric Environmental SFX Bus with Authentic Schroeder Reverb
       this.sfxBus = new Tone.Gain(1.0).connect(this.masterPreBus);
@@ -660,7 +659,7 @@ export class HyruleSequencer {
         if (spec.isSfx) {
           sampler.connect(this.sfxBus || this.masterPreBus);
           this.instGains[instKey] = this.sfxBus || this.masterPreBus;
-        } else if (targetVibrato && (instKey === 'ocarina' || instKey === 'flute')) {
+        } else if (targetVibrato && instKey === 'flute') {
           sampler.connect(targetVibrato);
           this.instGains[instKey] = targetChannelGain || new Tone.Gain(1.0);
         } else if (targetChannelGain) {
@@ -1604,16 +1603,20 @@ export class HyruleSequencer {
       }
 
       // Collect all CC#11 Expression events on this channel within this 8-bar block
+      // Note: Ocarina (ch 11) is bypassed because the authentic SoundFont sample contains natural dynamics;
+      // rapid 53Hz General MIDI micro-tremolo CC#11 jumps cause zipper noise and end-of-note step pops.
       const blockCc11 = [];
-      chTracks.forEach(t => {
-        if (t.controlChanges && t.controlChanges['11']) {
-          t.controlChanges['11'].forEach(e => {
-            if (e.ticks >= startTicks && e.ticks < endTicks) {
-              blockCc11.push(e);
-            }
-          });
-        }
-      });
+      if (ch !== 11) {
+        chTracks.forEach(t => {
+          if (t.controlChanges && t.controlChanges['11']) {
+            t.controlChanges['11'].forEach(e => {
+              if (e.ticks >= startTicks && e.ticks < endTicks) {
+                blockCc11.push(e);
+              }
+            });
+          }
+        });
+      }
 
       blockCc11.sort((a, b) => a.ticks - b.ticks);
 
@@ -1624,7 +1627,7 @@ export class HyruleSequencer {
           const firstVal = (firstRaw > 1) ? (firstRaw / 127) : firstRaw;
           const initGain = baseCc7 * firstVal;
           const evId = transport.scheduleOnce((time) => {
-            channelGain.gain.setValueAtTime(initGain, time);
+            channelGain.gain.setTargetAtTime(initGain, time, 0.02);
           }, startTransportSec);
           eventIds.push({ id: evId, time: startTransportSec });
         }
@@ -1637,14 +1640,14 @@ export class HyruleSequencer {
           const targetGain = baseCc7 * exprVal;
 
           const evId = transport.scheduleOnce((time) => {
-            channelGain.gain.setValueAtTime(targetGain, time);
+            channelGain.gain.setTargetAtTime(targetGain, time, 0.02);
           }, ccTransportTime);
           eventIds.push({ id: evId, time: ccTransportTime });
         });
       } else {
-        // Reset gain to baseline CC#7 volume at block boundary
+        // Reset gain smoothly to baseline CC#7 volume at block boundary
         const evId = transport.scheduleOnce((time) => {
-          channelGain.gain.setValueAtTime(baseCc7, time);
+          channelGain.gain.setTargetAtTime(baseCc7, time, 0.02);
         }, startTransportSec);
         eventIds.push({ id: evId, time: startTransportSec });
       }
@@ -1654,8 +1657,8 @@ export class HyruleSequencer {
     // 2. Schedule Note Events strictly adhering to MIDI parameters
     // -------------------------------------------------------------------------
     this.midiData.tracks.forEach((track, trIdx) => {
-      // Remove bell doubling from the Morning intro (Track 26 / ch 12 Vibraphone/Bells): pure solo Ocarina only
-      if (chosenBlock === blockMap.MORNING && (trIdx === 26 || track.channel === 12)) {
+      // Morning intro (Bars 1–9): Pure solo Ocarina only - mute all accompanying tracks (strings, piano, trumpet, vibraphone)
+      if (chosenBlock === blockMap.MORNING && (track.channel !== 11 && trIdx !== 25)) {
         return;
       }
 
@@ -1674,20 +1677,22 @@ export class HyruleSequencer {
           ? note.duration
           : Math.max(0.04, (note.durationTicks / (endTicks - startTicks)) * blockDurationSec);
 
-        // Morning Dawn Ocarina octave correction:
-        // In Bars 1–9, the MIDI transcription placed the Morning Dawn Ocarina (ch 11 / tr 25)
-        // an octave too high (up to G7 / 103), causing extreme high-frequency sample aliasing (dog whistle).
-        // Transposing down 1 octave (-12 semitones: A5–G6) restores the warm, authentic N64 sweet spot.
+        // Ocarina octave correction:
+        // Transpose ocarina notes in Morning Dawn (Bars 1–9) and Running 8 (Bars 129–137)
+        // down 1 octave (-12 semitones) so all ocarina parts across all cues reside
+        // consistently in the warm, authentic N64 sweet spot (B5–G6: 83–91).
         let playedNote = note;
-        if (chosenBlock === blockMap.MORNING && (track.channel === 11 || trIdx === 25)) {
-          const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-          const lowerMidi = note.midi - 12;
-          const lowerName = `${NOTE_NAMES[lowerMidi % 12]}${Math.floor(lowerMidi / 12) - 1}`;
-          playedNote = {
-            ...note,
-            midi: lowerMidi,
-            name: lowerName
-          };
+        if (track.channel === 11 || trIdx === 25) {
+          if (note.midi >= 93 || chosenBlock === blockMap.MORNING) {
+            const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+            const lowerMidi = note.midi - 12;
+            const lowerName = `${NOTE_NAMES[lowerMidi % 12]}${Math.floor(lowerMidi / 12) - 1}`;
+            playedNote = {
+              ...note,
+              midi: lowerMidi,
+              name: lowerName
+            };
+          }
         }
 
         const eventId = transport.scheduleOnce((time) => {

@@ -300,18 +300,16 @@ function processSamplePcm(s, isPercussive = false, targetSustainSec = 7.0) {
   out.set(rawPcm.subarray(0, relEndLoop), 0);
 
   let writePos = relEndLoop;
-  // Use smooth equal-power crossfade at each loop junction (up to 256 samples, or 1/4 of loop)
-  const xfadeLen = Math.min(256, Math.floor(loopLen / 4));
+  // Use a tiny micro-fade (16 samples = 0.5ms) strictly at the loop junction point
+  // to eliminate any sample step while preventing multi-cycle phase interference/crackle
+  const xfadeLen = Math.min(16, Math.floor(loopLen / 32));
 
   while (writePos < targetSamples) {
-    // Equal-power crossfade between the end of previous cycle and start of new loop cycle
     for (let i = 0; i < xfadeLen && (writePos - xfadeLen + i) < targetSamples; i++) {
       const alpha = i / xfadeLen;
-      const gainOld = Math.cos(alpha * 0.5 * Math.PI);
-      const gainNew = Math.sin(alpha * 0.5 * Math.PI);
       const oldVal = out[writePos - xfadeLen + i];
       const newVal = rawPcm[relStartLoop + i];
-      out[writePos - xfadeLen + i] = Math.round(oldVal * gainOld + newVal * gainNew);
+      out[writePos - xfadeLen + i] = Math.round(oldVal * (1 - alpha) + newVal * alpha);
     }
 
     // Copy remaining body of loop segment
