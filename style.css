@@ -461,6 +461,22 @@ body {
     background: rgba(255, 255, 255, 0.08);
 }
 
+.header-btn.icon-btn {
+    padding: 0.35rem 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.header-btn.icon-btn svg {
+    display: block;
+    transition: transform 0.18s ease;
+}
+
+.header-btn.icon-btn:hover svg {
+    transform: scale(1.15);
+}
+
 .header-btn.active,
 .random-toggle-btn.active,
 .cycle-toggle-btn.active {

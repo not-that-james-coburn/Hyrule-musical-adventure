@@ -36,6 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const loadingIndicator = document.getElementById('loading-indicator');
   const menuBtn = document.getElementById('menu-btn');
   const autoplayToggleBtn = document.getElementById('autoplay-toggle-btn');
+  const fullscreenBtn = document.getElementById('fullscreen-btn');
   const modeRunBtn = document.getElementById('mode-run-btn');
   const modeRestBtn = document.getElementById('mode-rest-btn');
   const modeBattleBtn = document.getElementById('mode-battle-btn');
@@ -111,6 +112,46 @@ document.addEventListener('DOMContentLoaded', () => {
       autoplayToggleBtn.classList.toggle('inactive', !enabled);
       autoplayToggleBtn.innerText = enabled ? "AUTO: ON" : "AUTO: OFF";
     }
+  }
+
+  // Fullscreen Management API
+  function isFullscreenActive() {
+    return Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+  }
+
+  function updateFullscreenUi() {
+    if (!fullscreenBtn) return;
+    const active = isFullscreenActive();
+    const enterIcon = fullscreenBtn.querySelector('.fs-icon-enter');
+    const exitIcon = fullscreenBtn.querySelector('.fs-icon-exit');
+
+    fullscreenBtn.classList.toggle('active', active);
+    fullscreenBtn.title = active ? 'Exit Fullscreen [F]' : 'Toggle Fullscreen [F]';
+    if (enterIcon) enterIcon.style.display = active ? 'none' : 'block';
+    if (exitIcon) exitIcon.style.display = active ? 'block' : 'none';
+  }
+
+  async function toggleFullscreen() {
+    try {
+      if (!isFullscreenActive()) {
+        const docEl = document.documentElement;
+        if (docEl.requestFullscreen) {
+          await docEl.requestFullscreen();
+        } else if (docEl.webkitRequestFullscreen) {
+          await docEl.webkitRequestFullscreen();
+        }
+      } else {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+          await document.webkitExitFullscreen();
+        }
+      }
+    } catch (err) {
+      console.warn('Fullscreen toggle failed:', err);
+    }
+    updateFullscreenUi();
+    debouncedCanvasResize();
   }
 
   // Mobile Background Audio Keep-Alive & Media Session Registration
@@ -387,6 +428,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Unlock controls
       if (autoplayToggleBtn) autoplayToggleBtn.disabled = false;
+      if (fullscreenBtn) fullscreenBtn.disabled = false;
       if (menuBtn) menuBtn.disabled = false;
       if (modeRunBtn) modeRunBtn.disabled = false;
       if (modeRestBtn) modeRestBtn.disabled = false;
@@ -447,10 +489,32 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 6. Keyboard Shortcuts: Space for Play/Pause, M/ESC for Menu, 1/R for Run, 2 for Rest, 3/B for Battle, A for Auto
+  // 6. Fullscreen Button Tap
+  if (fullscreenBtn) {
+    updateFullscreenUi();
+    fullscreenBtn.addEventListener('click', () => {
+      toggleFullscreen();
+    });
+  }
+
+  // Fullscreen state listeners for browser / OS level changes (e.g. Esc key or F11)
+  const onFullscreenChange = () => {
+    updateFullscreenUi();
+    debouncedCanvasResize();
+    setTimeout(debouncedCanvasResize, 150);
+  };
+  document.addEventListener('fullscreenchange', onFullscreenChange);
+  document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+
+  // 7. Keyboard Shortcuts: Space for Play/Pause, M/ESC for Menu, 1/R for Run, 2 for Rest, 3/B for Battle, A for Auto, F for Fullscreen
   window.addEventListener('keydown', (e) => {
-    if (!hasStarted) return;
     const key = e.key.toLowerCase();
+    if (key === 'f') {
+      e.preventDefault();
+      toggleFullscreen();
+      return;
+    }
+    if (!hasStarted) return;
     if (e.code === 'Space' || e.key === ' ') {
       e.preventDefault();
       togglePlayPause();
@@ -482,7 +546,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 7. Menu Modal Tab Buttons & Navigation
+  // 8. Menu Modal Tab Buttons & Navigation
   if (tabBtnAbout) {
     tabBtnAbout.addEventListener('click', () => switchMenuTab('about'));
   }
