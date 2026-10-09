@@ -636,7 +636,18 @@ export class HyruleSequencer {
     for (const [instKey, spec] of Object.entries(sampleSpecs)) {
       const urls = this.buildSamplerUrls(spec.filter);
       if (Object.keys(urls).length > 0) {
-        const sampler = new Tone.Sampler({ urls, baseUrl: this.soundfontBaseUrl });
+        const releaseTime = spec.isSfx
+          ? 0.08
+          : (instKey === 'ocarina' || instKey === 'flute' || instKey === 'trumpet' || instKey === 'trombone' || instKey.startsWith('string')
+              ? 0.18
+              : 0.12);
+
+        const sampler = new Tone.Sampler({
+          urls,
+          baseUrl: this.soundfontBaseUrl,
+          curve: 'linear',
+          release: releaseTime
+        });
         if (typeof spec.defaultVol === 'number') {
           sampler.volume.value = spec.defaultVol;
         }
