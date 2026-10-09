@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Hyrule Field Dynamic Audio Sequencer</title>
+    <title>Hyrule Sequencer - The Interactive Score of Ocarina of Time</title>
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -22,8 +22,8 @@
         <div id="play-overlay" class="play-overlay">
             <div class="splash-card">
                 <div class="splash-badge">NINTENDO 64 AUDIOSEQ</div>
-                <h1 class="splash-title">HYRULE FIELD</h1>
-                <p class="splash-subtitle">The Interactive Music of <em>The Legend of Zelda: Ocarina of Time</em></p>
+                <h1 class="splash-title">HYRULE SEQUENCER</h1>
+                <p class="splash-subtitle">The interactive score of <em>Ocarina of Time</em></p>
                 <button id="start-btn" class="start-btn" disabled>
                     <span id="start-btn-label" class="start-btn-text">Loading...</span>
                 </button>
@@ -31,7 +31,7 @@
         </div>
 
         <!-- Dedicated Menu Modal: About & Sound Controls -->
-        <div id="menu-modal" class="menu-modal" style="display: none;" aria-label="Hyrule Field Menu Panel">
+        <div id="menu-modal" class="menu-modal" style="display: none;" aria-label="Hyrule Sequencer Menu Panel">
             <div class="menu-dialog">
                 <!-- Menu Header: Tabs & Navigation -->
                 <header class="menu-header">
@@ -51,14 +51,32 @@
                         <h2 class="menu-section-title">The Interactive Music of Hyrule Field</h2>
                         <div class="about-content">
                             <p class="about-paragraph">
-                                This project recreates and visualizes the pioneering interactive soundtrack of <em>The Legend of Zelda: Ocarina of Time</em> (1998). Powered by authentic Nintendo 64 soundfont instruments and real-time Web Audio synthesis, every orchestral voice is performed live in your browser.
+                                <em>Hyrule Sequencer</em> is an interactive player and real-time visualizer that reconstructs the landmark dynamic soundtrack of <em>The Legend of Zelda: Ocarina of Time</em> (1998). Every instrument is performed live in your browser using authentic Nintendo 64 soundfont samples and real-time Web Audio synthesis.
+                            </p>
+
+                            <h3 class="about-subheading">Koji Kondo’s Landmark Design</h3>
+                            <p class="about-paragraph">
+                                In 1998, Nintendo sound director Koji Kondo and audio programmer Yoji Inagaki faced a major artistic problem: because players would spend dozens of hours roaming Hyrule Field, a traditional repeating audio loop would quickly induce listener fatigue.
                             </p>
                             <p class="about-paragraph">
-                                Composer Koji Kondo designed Hyrule Field as video game history's landmark dynamic score. Rather than playing a static looping recording, the music branches across modular 8-measure phrases that adapt seamlessly to player actions—transitioning between energetic running themes, tense battle fanfares when enemies draw near, and serene campfire rest melodies.
+                                Kondo’s breakthrough was to compose the overworld theme as a modular, branching score of self-contained 8-measure musical phrases. All phrases share the same key centers (F major and D minor) and a brisk tempo (~150 BPM). At every 8-measure boundary, the game’s sound driver evaluated Link’s immediate situation and seamlessly branched to a complementary phrase, preserving harmonic flow so transitions felt completely natural.
                             </p>
+
+                            <h3 class="about-subheading">The Three Dynamic Modes</h3>
                             <p class="about-paragraph">
-                                When resting, the heroic brass and percussion soften into silence to leave gentle pastoral harp chords. Use the player controls on the main screen to steer the musical path between Run, Rest, and Battle, or engage Autoplay to let the score evolve on its own.
+                                The composition organically transitions between three environmental states:
                             </p>
+                            <ul class="about-list">
+                                <li><strong>Explore:</strong> The heroic daytime overworld theme. Full brass fanfares, soaring strings, woodwinds, and driving march snare percussion accompany Link across the plains. Eight modular variations are shuffled to prevent immediate repetition.</li>
+                                <li><strong>Rest:</strong> When Link halts or stands idle, the assertive percussion and brass soften into silence, giving way to serene pastoral phrases carried by gentle harp arpeggios, woodwinds, and soft strings.</li>
+                                <li><strong>Battle:</strong> When an enemy approaches, the score immediately branches into tense combat fanfares and urgent percussion riffs. Once danger subsides, a triumphant victory flourish resolves seamlessly back into exploration.</li>
+                            </ul>
+
+                            <h3 class="about-subheading">Nintendo 64 Sound Reproduction</h3>
+                            <p class="about-paragraph">
+                                Rather than streaming pre-recorded audio, this engine parses raw MIDI sequence data note-by-note and routes them through sample soundfonts extracted directly from Nintendo’s original N64 <code>AUDIOSEQ</code> ROM sound bank. A real-time DSP audio chain emulates the warmth, stereo chorus, and acoustic hall reverberation characteristic of the N64 Reality Coprocessor audio microcode.
+                            </p>
+
                             <div class="about-tech-specs">
                                 <div class="tech-spec-item">
                                     <span class="spec-label">Audio Engine</span>
@@ -66,7 +84,7 @@
                                 </div>
                                 <div class="tech-spec-item">
                                     <span class="spec-label">Sound Library</span>
-                                    <span class="spec-value">N64 Audioseq Romfont Samples</span>
+                                    <span class="spec-value">N64 AUDIOSEQ ROM Soundfonts</span>
                                 </div>
                                 <div class="tech-spec-item">
                                     <span class="spec-label">Composition</span>
@@ -156,7 +174,7 @@
         <!-- Top Navigation / Header -->
         <header class="console-header">
             <div class="brand-badge">
-                <span class="brand-text">HYRULE FIELD</span>
+                <span class="brand-text">HYRULE SEQUENCER</span>
             </div>
             <div class="header-actions">
                 <button id="menu-btn" class="header-btn" aria-label="Open Menu" title="Menu [M / ESC]">MENU</button>
@@ -176,7 +194,7 @@
         <div class="viewport-canvas">
             <canvas id="note-stream-canvas" width="800" height="300"></canvas>
             <div class="viewport-legend">
-                <span class="dot green"></span><span>Run</span>
+                <span class="dot green"></span><span>Explore</span>
                 <span class="dot blue"></span><span>Rest</span>
                 <span class="dot red"></span><span>Battle</span>
             </div>
@@ -185,7 +203,7 @@
         <!-- Player Controls: 3 Distinct Mode Selectors -->
         <nav class="player-controls" aria-label="Game Mode Controls">
             <div class="mode-button-group">
-                <button id="mode-run-btn" class="mode-btn mode-run active" data-mode="EXPLORATION" title="Run Mode [1]">Run</button>
+                <button id="mode-explore-btn" class="mode-btn mode-explore mode-run active" data-mode="EXPLORATION" title="Explore Mode [1]">Explore</button>
                 <button id="mode-rest-btn" class="mode-btn mode-rest" data-mode="QUIET" title="Rest Mode [2]">Rest</button>
                 <button id="mode-battle-btn" class="mode-btn mode-battle" data-mode="BATTLE" title="Battle Mode [3]">Battle</button>
             </div>

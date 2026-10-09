@@ -37,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const menuBtn = document.getElementById('menu-btn');
   const autoplayToggleBtn = document.getElementById('autoplay-toggle-btn');
   const fullscreenBtn = document.getElementById('fullscreen-btn');
-  const modeRunBtn = document.getElementById('mode-run-btn');
+  const modeExploreBtn = document.getElementById('mode-explore-btn') || document.getElementById('mode-run-btn');
   const modeRestBtn = document.getElementById('mode-rest-btn');
   const modeBattleBtn = document.getElementById('mode-battle-btn');
   const canvas = document.getElementById('note-stream-canvas');
@@ -93,14 +93,14 @@ document.addEventListener('DOMContentLoaded', () => {
       if (startBtnLabel) startBtnLabel.innerText = "ERROR LOADING";
     });
 
-  // Mode Selection UI Updater (3 Distinct Mode Buttons: Run, Rest, Battle)
+  // Mode Selection UI Updater (3 Distinct Mode Buttons: Explore, Rest, Battle)
   function updateActiveModeUi(currentMode) {
     lastSyncedMode = currentMode;
     const isBattle = (currentMode === 'BATTLE' || currentMode === 'BATTLE_INTRO' || currentMode === 'BATTLE_OUTRO');
     const isRest = (currentMode === 'QUIET');
-    const isRun = !isBattle && !isRest;
+    const isExplore = !isBattle && !isRest;
 
-    if (modeRunBtn) modeRunBtn.classList.toggle('active', isRun);
+    if (modeExploreBtn) modeExploreBtn.classList.toggle('active', isExplore);
     if (modeRestBtn) modeRestBtn.classList.toggle('active', isRest);
     if (modeBattleBtn) modeBattleBtn.classList.toggle('active', isBattle);
   }
@@ -430,7 +430,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (autoplayToggleBtn) autoplayToggleBtn.disabled = false;
       if (fullscreenBtn) fullscreenBtn.disabled = false;
       if (menuBtn) menuBtn.disabled = false;
-      if (modeRunBtn) modeRunBtn.disabled = false;
+      if (modeExploreBtn) modeExploreBtn.disabled = false;
       if (modeRestBtn) modeRestBtn.disabled = false;
       if (modeBattleBtn) modeBattleBtn.disabled = false;
     });
@@ -448,9 +448,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 4. Three Distinct Mode Button Taps: Run, Rest, Battle
-  if (modeRunBtn) {
-    modeRunBtn.addEventListener('click', () => {
+  // 4. Three Distinct Mode Button Taps: Explore, Rest, Battle
+  if (modeExploreBtn) {
+    modeExploreBtn.addEventListener('click', () => {
       if (!hasStarted) return;
       changeGameMode('EXPLORATION');
       updateActiveModeUi('EXPLORATION');
@@ -506,7 +506,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('fullscreenchange', onFullscreenChange);
   document.addEventListener('webkitfullscreenchange', onFullscreenChange);
 
-  // 7. Keyboard Shortcuts: Space for Play/Pause, M/ESC for Menu, 1/R for Run, 2 for Rest, 3/B for Battle, A for Auto, F for Fullscreen
+  // 7. Keyboard Shortcuts: Space for Play/Pause, M/ESC for Menu, 1/E for Explore, 2 for Rest, 3/B for Battle, A for Auto, F for Fullscreen
   window.addEventListener('keydown', (e) => {
     const key = e.key.toLowerCase();
     if (key === 'f') {
@@ -524,7 +524,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         openMenu('about', true);
       }
-    } else if (e.key === '1' || key === 'r') {
+    } else if (e.key === '1' || key === 'e' || key === 'r') {
       changeGameMode('EXPLORATION');
       updateActiveModeUi('EXPLORATION');
     } else if (e.key === '2') {

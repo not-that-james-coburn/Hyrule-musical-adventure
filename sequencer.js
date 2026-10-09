@@ -56,56 +56,56 @@ export const blockMap = {
   // Ongoing Exploration Pool (shuffled via ShuffleBag, no sequential repeats)
   EXPLORATION: [
     {
-      id: 'Running 1 (Bars 17–25)',
+      id: 'Explore 1 (Bars 17–25)',
       name: 'Main Theme A (Overworld)',
       startBar: 17,
       endBar: 25,
       mode: 'EXPLORATION'
     },
     {
-      id: 'Running 2 (Bars 25–33)',
+      id: 'Explore 2 (Bars 25–33)',
       name: 'Heroic March Variation',
       startBar: 25,
       endBar: 33,
       mode: 'EXPLORATION'
     },
     {
-      id: 'Running 3 (Bars 33–41)',
+      id: 'Explore 3 (Bars 33–41)',
       name: 'Expansive Horizons Brass',
       startBar: 33,
       endBar: 41,
       mode: 'EXPLORATION'
     },
     {
-      id: 'Running 4 (Bars 41–49)',
+      id: 'Explore 4 (Bars 41–49)',
       name: 'Adventure Motif Flourish',
       startBar: 41,
       endBar: 49,
       mode: 'EXPLORATION'
     },
     {
-      id: 'Running 5 (Bars 49–57)',
+      id: 'Explore 5 (Bars 49–57)',
       name: 'Plains Bridge & Strings',
       startBar: 49,
       endBar: 57,
       mode: 'EXPLORATION'
     },
     {
-      id: 'Running 6 (Bars 57–65)',
-      name: 'Woodwinds & Pastoral Rest',
+      id: 'Explore 6 (Bars 57–65)',
+      name: 'Woodwinds & Pastoral Theme',
       startBar: 57,
       endBar: 65,
       mode: 'EXPLORATION'
     },
     {
-      id: 'Running 7 (Bars 121–129)',
+      id: 'Explore 7 (Bars 121–129)',
       name: 'Triumphant Return Flourish',
       startBar: 121,
       endBar: 129,
       mode: 'EXPLORATION'
     },
     {
-      id: 'Running 8 (Bars 129–137)',
+      id: 'Explore 8 (Bars 129–137)',
       name: 'Ocarina & Winds Interlude',
       startBar: 129,
       endBar: 137,
@@ -1179,7 +1179,7 @@ export class HyruleSequencer {
     }
     if (targetState === 'BATTLE_OUTRO') {
       if (this.currentBlock === blockMap.BATTLE_OUTRO) {
-        return (this.postBattleState === 'QUIET') ? this.quietBag.next(avoid) : blockMap.EXPLORATION[6]; // Running 7 Triumphant Return Flourish
+        return (this.postBattleState === 'QUIET') ? this.quietBag.next(avoid) : blockMap.EXPLORATION[6]; // Explore 7 Triumphant Return Flourish
       }
       return blockMap.BATTLE_OUTRO;
     }
@@ -1192,16 +1192,16 @@ export class HyruleSequencer {
       return this.quietBag.next(avoid);
     }
 
-    // EXPLORATION (Run):
+    // EXPLORATION (Explore):
     if (this.currentBlock === blockMap.INTRO && targetState === 'EXPLORATION') {
       this.initialSequenceStage = 3;
       this.explorationBag.setLastItem(blockMap.EXPLORATION[0]);
-      return blockMap.EXPLORATION[0]; // Running 1 Main Theme
+      return blockMap.EXPLORATION[0]; // Explore 1 Main Theme
     }
     if (this.initialSequenceStage === 2) {
       this.initialSequenceStage = 3;
       this.explorationBag.setLastItem(blockMap.EXPLORATION[0]);
-      return blockMap.EXPLORATION[0]; // Running 1 Main Theme
+      return blockMap.EXPLORATION[0]; // Explore 1 Main Theme
     }
 
     // Ongoing exploration rotation: drawn fairly from shuffle bag, strictly avoiding repeats
@@ -1759,7 +1759,7 @@ export class HyruleSequencer {
         // Phrase 0 -> Phrase 1 (Heroic Intro Fanfare)
         nextBlock = blockMap.INTRO;
       } else if (this.currentBlock === blockMap.INTRO) {
-        // Phrase 1 -> Phrase 2 (Running 1 Main Theme)
+        // Phrase 1 -> Phrase 2 (Explore 1 Main Theme)
         nextBlock = blockMap.EXPLORATION[0];
         this.currentState = 'EXPLORATION';
         this.currentModeBlocksRemaining = Math.floor(Math.random() * 4) + 4; // 4 to 7 blocks (50 to 90 seconds)

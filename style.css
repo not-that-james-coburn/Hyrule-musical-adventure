@@ -359,6 +359,33 @@ body {
     font-style: italic;
 }
 
+.about-subheading {
+    font-family: var(--font-heading);
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--gold);
+    letter-spacing: 0.6px;
+    margin-top: 0.6rem;
+    margin-bottom: -0.2rem;
+    text-transform: uppercase;
+}
+
+.about-list {
+    margin: 0;
+    padding-left: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    font-family: var(--font-body);
+    font-size: 0.88rem;
+    line-height: 1.55;
+    color: #94a3b8;
+}
+
+.about-list strong {
+    color: #f1f5f9;
+}
+
 .about-tech-specs {
     margin-top: 0.5rem;
     display: grid;
@@ -819,6 +846,7 @@ body {
     cursor: not-allowed;
 }
 
+.mode-btn.mode-explore.active,
 .mode-btn.mode-run.active,
 .mode-btn.mode-adventure.active,
 .mode-btn.mode-toggle-btn.run-active {
