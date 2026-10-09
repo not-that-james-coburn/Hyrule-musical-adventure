@@ -163,21 +163,10 @@ function getPresetSamples(presetName) {
     const endGen = pbags[b + 1] ? pbags[b + 1].genIndex : pgens.length;
     let instIdx = -1;
     let pKeyRange = null;
-    let pStartOff = 0, pEndOff = 0, pStartLoopOff = 0, pEndLoopOff = 0;
-    let pSampleModes = null;
 
     for (let g = startGen; g < endGen; g++) {
       if (pgens[g].oper === 41) instIdx = pgens[g].uAmount;
       if (pgens[g].oper === 43) pKeyRange = { lo: pgens[g].uAmount & 0xFF, hi: (pgens[g].uAmount >> 8) & 0xFF };
-      if (pgens[g].oper === 0) pStartOff += pgens[g].amount;
-      if (pgens[g].oper === 1) pEndOff += pgens[g].amount;
-      if (pgens[g].oper === 2) pStartLoopOff += pgens[g].amount;
-      if (pgens[g].oper === 3) pEndLoopOff += pgens[g].amount;
-      if (pgens[g].oper === 4) pStartOff += pgens[g].amount * 32768;
-      if (pgens[g].oper === 12) pEndOff += pgens[g].amount * 32768;
-      if (pgens[g].oper === 45) pStartLoopOff += pgens[g].amount * 32768;
-      if (pgens[g].oper === 50) pEndLoopOff += pgens[g].amount * 32768;
-      if (pgens[g].oper === 54) pSampleModes = pgens[g].uAmount;
     }
 
     if (instIdx >= 0 && instIdx < instruments.length) {
@@ -193,8 +182,6 @@ function getPresetSamples(presetName) {
         let keyRange = pKeyRange;
         let coarseTune = 0;
         let fineTune = 0;
-        let startOff = pStartOff, endOff = pEndOff, startLoopOff = pStartLoopOff, endLoopOff = pEndLoopOff;
-        let sampleModes = pSampleModes;
 
         for (let ig = startIgen; ig < endIgen; ig++) {
           if (igens[ig].oper === 53) sampleId = igens[ig].uAmount;
@@ -202,15 +189,6 @@ function getPresetSamples(presetName) {
           if (igens[ig].oper === 43) keyRange = { lo: igens[ig].uAmount & 0xFF, hi: (igens[ig].uAmount >> 8) & 0xFF };
           if (igens[ig].oper === 51) coarseTune = igens[ig].amount;
           if (igens[ig].oper === 52) fineTune = igens[ig].amount;
-          if (igens[ig].oper === 0) startOff += igens[ig].amount;
-          if (igens[ig].oper === 1) endOff += igens[ig].amount;
-          if (igens[ig].oper === 2) startLoopOff += igens[ig].amount;
-          if (igens[ig].oper === 3) endLoopOff += igens[ig].amount;
-          if (igens[ig].oper === 4) startOff += igens[ig].amount * 32768;
-          if (igens[ig].oper === 12) endOff += igens[ig].amount * 32768;
-          if (igens[ig].oper === 45) startLoopOff += igens[ig].amount * 32768;
-          if (igens[ig].oper === 50) endLoopOff += igens[ig].amount * 32768;
-          if (igens[ig].oper === 54) sampleModes = igens[ig].uAmount;
         }
 
         if (sampleId >= 0 && sampleId < samples.length) {
@@ -222,11 +200,10 @@ function getPresetSamples(presetName) {
             rootKey: (rootKey !== null ? rootKey : smp.originalPitch) + coarseTune,
             keyRange: keyRange || { lo: 0, hi: 127 },
             sampleRate: smp.sampleRate,
-            start: smp.start + startOff,
-            end: smp.end + endOff,
-            startloop: smp.startloop + startLoopOff,
-            endloop: smp.endloop + endLoopOff,
-            sampleModes: sampleModes !== null ? sampleModes : (smp.sampleType & 1),
+            start: smp.start,
+            end: smp.end,
+            startloop: smp.startloop,
+            endloop: smp.endloop,
             pitchCorrection: smp.pitchCorrection + fineTune
           });
         }
@@ -263,8 +240,8 @@ function createWavBuffer(pcmData, sampleRate = 32000, numChannels = 1, bitsPerSa
   return buffer;
 }
 
-// 8. Helper: unroll loop with seamless equal-power crossfade for sustained instruments
-function processSamplePcm(s, isPercussive = false, targetSustainSec = 7.0) {
+// 8. Helper: unroll loop with seamless crossfade for sustained instruments
+function processSamplePcm(s, isPercussive = false, targetSustainSec = 4.5) {
   const numSamples = s.end - s.start;
   const rawPcm = new Int16Array(
     sf2Buf.buffer,
@@ -272,39 +249,34 @@ function processSamplePcm(s, isPercussive = false, targetSustainSec = 7.0) {
     numSamples
   );
 
-  const hasLoop = !isPercussive && (
+  const hasLoop = (
     s.endloop > s.startloop &&
     s.startloop >= s.start &&
     s.endloop <= s.end &&
     (s.endloop - s.startloop) > 100
   );
 
-  if (!hasLoop) {
+  if (!hasLoop || isPercussive) {
     return Buffer.from(rawPcm.buffer, rawPcm.byteOffset, rawPcm.byteLength);
   }
 
-  // Sustained instruments: preserve attack phase (0 to relStartLoop) ONCE,
-  // then loop strictly between relStartLoop and relEndLoop up to targetSustainSec
-  const relStartLoop = Math.max(0, s.startloop - s.start);
-  const relEndLoop = Math.min(numSamples, s.endloop - s.start);
+  // Sustained instruments: unroll loop smoothly up to targetSustainSec
+  const relStartLoop = s.startloop - s.start;
+  const relEndLoop = s.endloop - s.start;
   const loopLen = relEndLoop - relStartLoop;
-
-  if (loopLen <= 100) {
-    return Buffer.from(rawPcm.buffer, rawPcm.byteOffset, rawPcm.byteLength);
-  }
-
   const targetSamples = Math.max(numSamples, Math.floor(targetSustainSec * s.sampleRate));
-  const out = new Int16Array(targetSamples);
 
-  // 1. Initial attack & first loop pass: copy up to relEndLoop
+  const out = new Int16Array(targetSamples);
   out.set(rawPcm.subarray(0, relEndLoop), 0);
 
   let writePos = relEndLoop;
-  // Use a tiny micro-fade (16 samples = 0.5ms) strictly at the loop junction point
-  // to eliminate any sample step while preventing multi-cycle phase interference/crackle
-  const xfadeLen = Math.min(16, Math.floor(loopLen / 32));
+  const xfadeLen = Math.min(128, Math.floor(loopLen / 4));
 
   while (writePos < targetSamples) {
+    const remaining = targetSamples - writePos;
+    const toCopy = Math.min(loopLen - xfadeLen, remaining);
+
+    // Smooth linear crossfade at splice
     for (let i = 0; i < xfadeLen && (writePos - xfadeLen + i) < targetSamples; i++) {
       const alpha = i / xfadeLen;
       const oldVal = out[writePos - xfadeLen + i];
@@ -312,14 +284,14 @@ function processSamplePcm(s, isPercussive = false, targetSustainSec = 7.0) {
       out[writePos - xfadeLen + i] = Math.round(oldVal * (1 - alpha) + newVal * alpha);
     }
 
-    // Copy remaining body of loop segment
+    // Copy loop segment
     for (let i = xfadeLen; i < loopLen && writePos < targetSamples; i++) {
       out[writePos++] = rawPcm[relStartLoop + i];
     }
   }
 
-  // 150ms gentle release fade at the very end of buffer to avoid hard cutoff
-  const fadeOutSamples = Math.floor(0.15 * s.sampleRate);
+  // 100ms gentle release fade at the very end
+  const fadeOutSamples = Math.floor(0.1 * s.sampleRate);
   for (let i = 0; i < fadeOutSamples; i++) {
     const idx = targetSamples - fadeOutSamples + i;
     const gain = 1 - (i / fadeOutSamples);
