@@ -12,27 +12,151 @@
       }
     }
     </script>
-  <script type="module" crossorigin src="./assets/index-Vwv9c_XD.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-DAGom91E.css">
+  <script type="module" crossorigin src="./assets/index-L3bM9jZ6.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-BJQtJ1oG.css">
 </head>
 <body>
     <main class="nintendo-console">
-        <!-- Educational Intro & Start Overlay -->
+        <!-- Splash Screen / Start Overlay (Clean Title & Subtitle) -->
         <div id="play-overlay" class="play-overlay">
-            <div class="intro-card">
-                <h1 class="intro-title">The Interactive Music of Hyrule Field</h1>
-                <p class="intro-text">
-                    This project recreates and visualizes the pioneering interactive soundtrack of <em>The Legend of Zelda: Ocarina of Time</em> (1998). Powered by authentic Nintendo 64 soundfont instruments and real-time Web Audio synthesis, every orchestral voice is performed live in your browser.
-                </p>
-                <p class="intro-text">
-                    Composer Koji Kondo designed Hyrule Field as video game history's landmark dynamic score. Rather than playing a looping recording, the music branches across modular 8-measure phrases that adapt to player actions—transitioning smoothly between energetic running themes, tense battle fanfares when enemies draw near, and serene campfire rest melodies.
-                </p>
-                <p class="intro-text">
-                    When resting, the heroic brass melody fades to leave gentle pastoral harp chords. Use the controls below to steer the musical path between Run, Rest, and Battle, or turn on Autoplay to let the score evolve on its own.
-                </p>
+            <div class="splash-card">
+                <div class="splash-badge">NINTENDO 64 AUDIOSEQ</div>
+                <h1 class="splash-title">HYRULE FIELD</h1>
+                <p class="splash-subtitle">The Interactive Music of <em>The Legend of Zelda: Ocarina of Time</em></p>
                 <button id="start-btn" class="start-btn" disabled>
                     <span id="start-btn-label" class="start-btn-text">Loading...</span>
                 </button>
+            </div>
+        </div>
+
+        <!-- Dedicated Menu Modal: About & Sound Controls -->
+        <div id="menu-modal" class="menu-modal" style="display: none;" aria-label="Hyrule Field Menu Panel">
+            <div class="menu-dialog">
+                <!-- Menu Header: Tabs & Navigation -->
+                <header class="menu-header">
+                    <div class="menu-nav-tabs">
+                        <button id="tab-btn-about" class="menu-tab-btn active" data-tab="about">ABOUT</button>
+                        <button id="tab-btn-sound" class="menu-tab-btn" data-tab="sound">SOUND</button>
+                    </div>
+                    <div class="menu-header-actions">
+                        <button id="menu-back-btn" class="menu-action-btn" title="Back to Music [M / ESC]">← BACK</button>
+                        <button id="menu-close-btn" class="menu-close-btn" aria-label="Close Menu" title="Close [ESC]">✕</button>
+                    </div>
+                </header>
+
+                <!-- Menu Body -->
+                <div class="menu-body">
+                    <!-- About Tab Panel -->
+                    <section id="tab-panel-about" class="menu-tab-panel active">
+                        <h2 class="menu-section-title">The Interactive Music of Hyrule Field</h2>
+                        <div class="about-content">
+                            <p class="about-paragraph">
+                                This project recreates and visualizes the pioneering interactive soundtrack of <em>The Legend of Zelda: Ocarina of Time</em> (1998). Powered by authentic Nintendo 64 soundfont instruments and real-time Web Audio synthesis, every orchestral voice is performed live in your browser.
+                            </p>
+                            <p class="about-paragraph">
+                                Composer Koji Kondo designed Hyrule Field as video game history's landmark dynamic score. Rather than playing a static looping recording, the music branches across modular 8-measure phrases that adapt seamlessly to player actions—transitioning between energetic running themes, tense battle fanfares when enemies draw near, and serene campfire rest melodies.
+                            </p>
+                            <p class="about-paragraph">
+                                When resting, the heroic brass and percussion soften into silence to leave gentle pastoral harp chords. Use the player controls on the main screen to steer the musical path between Run, Rest, and Battle, or engage Autoplay to let the score evolve on its own.
+                            </p>
+                            <div class="about-tech-specs">
+                                <div class="tech-spec-item">
+                                    <span class="spec-label">Audio Engine</span>
+                                    <span class="spec-value">Web Audio API + Tone.js</span>
+                                </div>
+                                <div class="tech-spec-item">
+                                    <span class="spec-label">Sound Library</span>
+                                    <span class="spec-value">N64 Audioseq Romfont Samples</span>
+                                </div>
+                                <div class="tech-spec-item">
+                                    <span class="spec-label">Composition</span>
+                                    <span class="spec-value">Koji Kondo (Nintendo EAD, 1998)</span>
+                                </div>
+                                <div class="tech-spec-item">
+                                    <span class="spec-label">Arrangement</span>
+                                    <span class="spec-value">Modular 8-Measure Branching Stems</span>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Sound Controls Tab Panel -->
+                    <section id="tab-panel-sound" class="menu-tab-panel" style="display: none;">
+                        <h2 class="menu-section-title">N64 DSP Sound Mixer</h2>
+                        
+                        <!-- Preset Quick Buttons -->
+                        <div class="mixer-presets">
+                            <button class="preset-btn active" data-preset="n64">N64 Warmth</button>
+                            <button class="preset-btn" data-preset="hall">Concert Hall</button>
+                            <button class="preset-btn" data-preset="retro">Vintage CRT</button>
+                            <button class="preset-btn" data-preset="bright">Crisp Studio</button>
+                        </div>
+
+                        <!-- Sliders Grid -->
+                        <div class="mixer-controls-grid">
+                            <div class="mixer-control">
+                                <div class="control-label-row">
+                                    <span class="ctrl-name">Warmth (N64 Lowpass)</span>
+                                    <span id="val-warmth" class="ctrl-val">13.5 kHz</span>
+                                </div>
+                                <input id="slider-warmth" type="range" min="6000" max="18000" step="250" value="13500" class="nintendo-slider">
+                                <span class="ctrl-hint">Filters digital sample aliasing</span>
+                            </div>
+
+                            <div class="mixer-control">
+                                <div class="control-label-row">
+                                    <span class="ctrl-name">Treble / Shrill Cut</span>
+                                    <span id="val-treble" class="ctrl-val">0.0 dB</span>
+                                </div>
+                                <input id="slider-treble" type="range" min="-10" max="4" step="0.5" value="0.0" class="nintendo-slider">
+                                <span class="ctrl-hint">Reduces high-octave harshness</span>
+                            </div>
+
+                            <div class="mixer-control">
+                                <div class="control-label-row">
+                                    <span class="ctrl-name">Reverb Ambiance</span>
+                                    <span id="val-reverb" class="ctrl-val">55%</span>
+                                </div>
+                                <input id="slider-reverb" type="range" min="0" max="100" step="1" value="55" class="nintendo-slider">
+                                <span class="ctrl-hint">Concert hall acoustic space</span>
+                            </div>
+
+                            <div class="mixer-control">
+                                <div class="control-label-row">
+                                    <span class="ctrl-name">Stereo Chorus (CC#93)</span>
+                                    <span id="val-chorus" class="ctrl-val">50%</span>
+                                </div>
+                                <input id="slider-chorus" type="range" min="0" max="100" step="1" value="50" class="nintendo-slider">
+                                <span class="ctrl-hint">N64 microcode spatial width</span>
+                            </div>
+
+                            <div class="mixer-control">
+                                <div class="control-label-row">
+                                    <span class="ctrl-name">Orchestral Stereo Stage</span>
+                                    <span id="val-stereo" class="ctrl-val">100%</span>
+                                </div>
+                                <input id="slider-stereo" type="range" min="0" max="150" step="5" value="100" class="nintendo-slider">
+                                <span class="ctrl-hint">Symphonic acoustic separation</span>
+                            </div>
+
+                            <div class="mixer-control full-width">
+                                <div class="control-label-row">
+                                    <span class="ctrl-name">Master Volume</span>
+                                    <span id="val-volume" class="ctrl-val">-2.0 dB</span>
+                                </div>
+                                <input id="slider-volume" type="range" min="-18" max="0" step="0.5" value="-2.0" class="nintendo-slider">
+                                <span class="ctrl-hint">Master bus output level</span>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- Menu Footer: Resume / Back Button -->
+                <footer class="menu-footer">
+                    <button id="menu-resume-btn" class="menu-resume-btn">
+                        <span>Resume Playback</span>
+                    </button>
+                </footer>
             </div>
         </div>
 
@@ -42,87 +166,12 @@
                 <span class="brand-text">HYRULE FIELD</span>
             </div>
             <div class="header-actions">
-                <button id="menu-btn" class="header-btn" aria-label="Open Educational Menu" title="Menu [M / ESC]">MENU</button>
+                <button id="menu-btn" class="header-btn" aria-label="Open Menu" title="Menu [M / ESC]">MENU</button>
                 <button id="autoplay-toggle-btn" class="header-btn inactive" aria-label="Toggle Autoplay Cycling" title="Toggle Autoplay Mode Cycling [A]">AUTOPLAY: OFF</button>
-                <button id="mixer-toggle-btn" class="header-btn" aria-label="Toggle Sound Mixer" title="Audio Mixer">SOUND</button>
+                <button id="mixer-toggle-btn" class="header-btn" aria-label="Open Sound Controls" title="Sound Controls">SOUND</button>
                 <div id="loading-indicator" class="status-pill loading">Loading...</div>
             </div>
         </header>
-
-        <!-- Sound Mixer Drawer (Collapsible) -->
-        <section id="mixer-drawer" class="mixer-drawer" style="display: none;" aria-label="Audio Mixer Panel">
-            <div class="mixer-inner">
-                <div class="mixer-header-row">
-                    <span class="mixer-title">N64 DSP SOUND MIXER</span>
-                    <button id="mixer-close-btn" class="mixer-close-btn" aria-label="Close Mixer">✕</button>
-                </div>
-
-                <!-- Preset Quick Buttons -->
-                <div class="mixer-presets">
-                    <button class="preset-btn active" data-preset="n64">N64 Warmth</button>
-                    <button class="preset-btn" data-preset="hall">Concert Hall</button>
-                    <button class="preset-btn" data-preset="retro">Vintage CRT</button>
-                    <button class="preset-btn" data-preset="bright">Crisp Studio</button>
-                </div>
-
-                <!-- Sliders Grid -->
-                <div class="mixer-controls-grid">
-                    <div class="mixer-control">
-                        <div class="control-label-row">
-                            <span class="ctrl-name">Warmth (N64 Lowpass)</span>
-                            <span id="val-warmth" class="ctrl-val">13.5 kHz</span>
-                        </div>
-                        <input id="slider-warmth" type="range" min="6000" max="18000" step="250" value="13500" class="nintendo-slider">
-                        <span class="ctrl-hint">Filters digital sample aliasing</span>
-                    </div>
-
-                    <div class="mixer-control">
-                        <div class="control-label-row">
-                            <span class="ctrl-name">Treble / Shrill Cut</span>
-                            <span id="val-treble" class="ctrl-val">0.0 dB</span>
-                        </div>
-                        <input id="slider-treble" type="range" min="-10" max="4" step="0.5" value="0.0" class="nintendo-slider">
-                        <span class="ctrl-hint">Reduces high-octave harshness</span>
-                    </div>
-
-                    <div class="mixer-control">
-                        <div class="control-label-row">
-                            <span class="ctrl-name">Reverb Ambiance</span>
-                            <span id="val-reverb" class="ctrl-val">55%</span>
-                        </div>
-                        <input id="slider-reverb" type="range" min="0" max="100" step="1" value="55" class="nintendo-slider">
-                        <span class="ctrl-hint">Concert hall acoustic space</span>
-                    </div>
-
-                    <div class="mixer-control">
-                        <div class="control-label-row">
-                            <span class="ctrl-name">Stereo Chorus (CC#93)</span>
-                            <span id="val-chorus" class="ctrl-val">50%</span>
-                        </div>
-                        <input id="slider-chorus" type="range" min="0" max="100" step="1" value="50" class="nintendo-slider">
-                        <span class="ctrl-hint">N64 microcode spatial width</span>
-                    </div>
-
-                    <div class="mixer-control">
-                        <div class="control-label-row">
-                            <span class="ctrl-name">Orchestral Stereo Stage</span>
-                            <span id="val-stereo" class="ctrl-val">100%</span>
-                        </div>
-                        <input id="slider-stereo" type="range" min="0" max="150" step="5" value="100" class="nintendo-slider">
-                        <span class="ctrl-hint">Symphonic acoustic separation</span>
-                    </div>
-
-                    <div class="mixer-control full-width">
-                        <div class="control-label-row">
-                            <span class="ctrl-name">Master Volume</span>
-                            <span id="val-volume" class="ctrl-val">-2.0 dB</span>
-                        </div>
-                        <input id="slider-volume" type="range" min="-18" max="0" step="0.5" value="-2.0" class="nintendo-slider">
-                        <span class="ctrl-hint">Master bus output level</span>
-                    </div>
-                </div>
-            </div>
-        </section>
 
         <!-- Edge-to-Edge Right-to-Left Streaming Canvas Visualizer -->
         <div class="viewport-canvas">
