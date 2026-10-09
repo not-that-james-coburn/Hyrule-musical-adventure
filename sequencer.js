@@ -1776,7 +1776,8 @@ export class HyruleSequencer {
         // Phrase 1 -> Phrase 2 (Running 1 Main Theme)
         nextBlock = blockMap.EXPLORATION[0];
         this.currentState = 'EXPLORATION';
-        this.currentModeBlocksRemaining = 1;
+        this.currentModeBlocksRemaining = Math.floor(Math.random() * 4) + 4; // 4 to 7 blocks (50 to 90 seconds)
+        this.blocksSinceLastBattle = 0;
         this.explorationBag.setLastItem(blockMap.EXPLORATION[0]);
         this.initialSequenceStage = 3;
       } else if (this.currentBlock === blockMap.BATTLE_INTRO) {
@@ -1786,39 +1787,49 @@ export class HyruleSequencer {
       } else if (this.currentState === 'BATTLE' && this.currentBlock !== blockMap.BATTLE_OUTRO) {
         // Combat skirmish completed -> queue victory fanfare
         nextBlock = blockMap.BATTLE_OUTRO;
-        this.postBattleState = (Math.random() < 0.5) ? 'EXPLORATION' : 'QUIET';
+        this.postBattleState = (Math.random() < 0.6) ? 'EXPLORATION' : 'QUIET';
       } else if (this.currentBlock === blockMap.BATTLE_OUTRO) {
         // Victory fanfare completed -> resolve into postBattleState (Run or Rest)
         const target = this.postBattleState || 'EXPLORATION';
         this.postBattleState = null;
         this.currentState = target;
-        this.currentModeBlocksRemaining = (Math.random() < 0.5 ? 1 : 2);
+        this.currentModeBlocksRemaining = (target === 'QUIET')
+          ? (Math.floor(Math.random() * 3) + 3) // 3 to 5 blocks
+          : (Math.floor(Math.random() * 4) + 4); // 4 to 7 blocks
+        this.blocksSinceLastBattle = 0;
         nextBlock = (target === 'QUIET') ? this.quietBag.next(this.currentBlock) : this.explorationBag.next(this.currentBlock);
       } else {
         // Active in EXPLORATION (Run) or QUIET (Rest)
         this.currentModeBlocksRemaining--;
+        if (typeof this.blocksSinceLastBattle !== 'number') this.blocksSinceLastBattle = 0;
+        this.blocksSinceLastBattle++;
+
         if (this.currentModeBlocksRemaining > 0) {
           nextBlock = (this.currentState === 'QUIET') ? this.quietBag.next(this.currentBlock) : this.explorationBag.next(this.currentBlock);
         } else {
-          // Mode phrase complete: randomly cycle to one of the other modes!
-          const candidateModes = (this.currentState === 'EXPLORATION')
-            ? ['QUIET', 'BATTLE']
-            : ['EXPLORATION', 'BATTLE'];
-          const chosenMode = candidateModes[Math.floor(Math.random() * candidateModes.length)];
+          // Mode phrase complete: decide whether to change mode!
+          // Battle encounters trigger much less frequently:
+          // Requires at least 6 blocks (~77s) since last battle and only a 15% roll
+          const canTriggerBattle = (this.blocksSinceLastBattle >= 6);
+          const rollForBattle = canTriggerBattle && (Math.random() < 0.15);
 
-          if (chosenMode === 'BATTLE') {
+          if (rollForBattle) {
             nextBlock = blockMap.BATTLE_INTRO;
             this.pendingStateChange = 'BATTLE';
-          } else if (chosenMode === 'QUIET') {
-            this.currentState = 'QUIET';
-            this.pendingStateChange = 'QUIET';
-            this.currentModeBlocksRemaining = (Math.random() < 0.5 ? 1 : 2);
-            nextBlock = this.quietBag.next(this.currentBlock);
+            this.blocksSinceLastBattle = 0;
           } else {
-            this.currentState = 'EXPLORATION';
-            this.pendingStateChange = 'EXPLORATION';
-            this.currentModeBlocksRemaining = (Math.random() < 0.5 ? 1 : 2);
-            nextBlock = this.explorationBag.next(this.currentBlock);
+            // Smoothly alternate between Run and Rest
+            if (this.currentState === 'EXPLORATION') {
+              this.currentState = 'QUIET';
+              this.pendingStateChange = 'QUIET';
+              this.currentModeBlocksRemaining = Math.floor(Math.random() * 3) + 3; // 3 to 5 blocks
+              nextBlock = this.quietBag.next(this.currentBlock);
+            } else {
+              this.currentState = 'EXPLORATION';
+              this.pendingStateChange = 'EXPLORATION';
+              this.currentModeBlocksRemaining = Math.floor(Math.random() * 4) + 4; // 4 to 7 blocks
+              nextBlock = this.explorationBag.next(this.currentBlock);
+            }
           }
         }
       }
@@ -2181,12 +2192,17 @@ export class HyruleSequencer {
   // --- Simple Mode Randomizer (Adventure, Rest, Battle) ---
   setRandomizer(enabled) {
     this.randomizerEnabled = Boolean(enabled);
+    if (this.randomizerEnabled && (!this.currentModeBlocksRemaining || this.currentModeBlocksRemaining <= 0)) {
+      this.currentModeBlocksRemaining = (this.currentState === 'QUIET')
+        ? (Math.floor(Math.random() * 3) + 3) // 3 to 5 blocks
+        : (Math.floor(Math.random() * 4) + 4); // 4 to 7 blocks
+      this.blocksSinceLastBattle = 0;
+    }
     return this.randomizerEnabled;
   }
 
   toggleRandomizer() {
-    this.randomizerEnabled = !this.randomizerEnabled;
-    return this.randomizerEnabled;
+    return this.setRandomizer(!this.randomizerEnabled);
   }
 
   isRandomizerEnabled() {

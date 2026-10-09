@@ -150,13 +150,6 @@
                         </div>
                     </section>
                 </div>
-
-                <!-- Menu Footer: Resume / Back Button -->
-                <footer class="menu-footer">
-                    <button id="menu-resume-btn" class="menu-resume-btn">
-                        <span>Resume Playback</span>
-                    </button>
-                </footer>
             </div>
         </div>
 
@@ -167,8 +160,7 @@
             </div>
             <div class="header-actions">
                 <button id="menu-btn" class="header-btn" aria-label="Open Menu" title="Menu [M / ESC]">MENU</button>
-                <button id="autoplay-toggle-btn" class="header-btn inactive" aria-label="Toggle Autoplay Cycling" title="Toggle Autoplay Mode Cycling [A]">AUTOPLAY: OFF</button>
-                <div id="loading-indicator" class="status-pill loading">Loading...</div>
+                <button id="autoplay-toggle-btn" class="header-btn inactive" aria-label="Toggle Auto Cycling" title="Toggle Auto Cycling [A]">AUTO: OFF</button>
             </div>
         </header>
 
@@ -182,11 +174,12 @@
             </div>
         </div>
 
-        <!-- Player Controls: Mode Selector -->
+        <!-- Player Controls: 3 Distinct Mode Selectors -->
         <nav class="player-controls" aria-label="Game Mode Controls">
             <div class="mode-button-group">
-                <button id="run-rest-toggle-btn" class="mode-btn mode-toggle-btn active" title="Toggle Run / Rest Mode [1]">Rest</button>
-                <button id="battle-btn" class="mode-btn mode-battle" data-mode="BATTLE" title="Battle Mode [2]">Battle</button>
+                <button id="mode-run-btn" class="mode-btn mode-run active" data-mode="EXPLORATION" title="Run Mode [1]">Run</button>
+                <button id="mode-rest-btn" class="mode-btn mode-rest" data-mode="QUIET" title="Rest Mode [2]">Rest</button>
+                <button id="mode-battle-btn" class="mode-btn mode-battle" data-mode="BATTLE" title="Battle Mode [3]">Battle</button>
             </div>
         </nav>
     </main>

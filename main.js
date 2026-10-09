@@ -36,8 +36,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const loadingIndicator = document.getElementById('loading-indicator');
   const menuBtn = document.getElementById('menu-btn');
   const autoplayToggleBtn = document.getElementById('autoplay-toggle-btn');
-  const runRestToggleBtn = document.getElementById('run-rest-toggle-btn');
-  const battleBtn = document.getElementById('battle-btn');
+  const modeRunBtn = document.getElementById('mode-run-btn');
+  const modeRestBtn = document.getElementById('mode-rest-btn');
+  const modeBattleBtn = document.getElementById('mode-battle-btn');
   const canvas = document.getElementById('note-stream-canvas');
   const ctx = canvas ? canvas.getContext('2d') : null;
 
@@ -48,7 +49,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const tabPanelAbout = document.getElementById('tab-panel-about');
   const tabPanelSound = document.getElementById('tab-panel-sound');
   const menuCloseBtn = document.getElementById('menu-close-btn');
-  const menuResumeBtn = document.getElementById('menu-resume-btn');
 
   // Mixer DOM Elements (inside Menu Sound tab)
   const presetButtons = document.querySelectorAll('.preset-btn');
@@ -92,39 +92,24 @@ document.addEventListener('DOMContentLoaded', () => {
       if (startBtnLabel) startBtnLabel.innerText = "ERROR LOADING";
     });
 
-  // Mode Selection UI Updater (Single Run/Rest Toggle Button & Battle Button)
+  // Mode Selection UI Updater (3 Distinct Mode Buttons: Run, Rest, Battle)
   function updateActiveModeUi(currentMode) {
     lastSyncedMode = currentMode;
     const isBattle = (currentMode === 'BATTLE' || currentMode === 'BATTLE_INTRO' || currentMode === 'BATTLE_OUTRO');
     const isRest = (currentMode === 'QUIET');
+    const isRun = !isBattle && !isRest;
 
-    if (battleBtn) {
-      battleBtn.classList.toggle('active', isBattle);
-    }
-
-    if (runRestToggleBtn) {
-      if (isBattle) {
-        runRestToggleBtn.classList.remove('active', 'run-active', 'rest-active');
-      } else if (isRest) {
-        runRestToggleBtn.classList.add('active', 'rest-active');
-        runRestToggleBtn.classList.remove('run-active');
-        runRestToggleBtn.innerText = "Run";
-        runRestToggleBtn.title = "Switch to Run Mode [1]";
-      } else { // Run mode (EXPLORATION)
-        runRestToggleBtn.classList.add('active', 'run-active');
-        runRestToggleBtn.classList.remove('rest-active');
-        runRestToggleBtn.innerText = "Rest";
-        runRestToggleBtn.title = "Switch to Rest Mode [1]";
-      }
-    }
+    if (modeRunBtn) modeRunBtn.classList.toggle('active', isRun);
+    if (modeRestBtn) modeRestBtn.classList.toggle('active', isRest);
+    if (modeBattleBtn) modeBattleBtn.classList.toggle('active', isBattle);
   }
 
-  // Autoplay UI Updater
+  // Auto UI Updater
   function updateAutoPlayUi(enabled) {
     if (autoplayToggleBtn) {
       autoplayToggleBtn.classList.toggle('active', enabled);
       autoplayToggleBtn.classList.toggle('inactive', !enabled);
-      autoplayToggleBtn.innerText = enabled ? "AUTOPLAY: ON" : "AUTOPLAY: OFF";
+      autoplayToggleBtn.innerText = enabled ? "AUTO: ON" : "AUTO: OFF";
     }
   }
 
@@ -253,7 +238,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Menu Modal Tab Switcher ('about' vs 'sound')
-  function switchMenuTab(tabName) {
+  async function switchMenuTab(tabName) {
     activeMenuTab = tabName;
     if (tabName === 'about') {
       if (tabBtnAbout) tabBtnAbout.classList.add('active');
@@ -267,6 +252,12 @@ document.addEventListener('DOMContentLoaded', () => {
         tabPanelSound.style.display = 'none';
       }
       if (menuBtn) menuBtn.classList.add('active');
+
+      // Pause audio so user can read About technical background in quiet
+      if (hasStarted) {
+        await pausePlayback();
+        pauseBackgroundKeeper();
+      }
     } else if (tabName === 'sound') {
       if (tabBtnSound) tabBtnSound.classList.add('active');
       if (tabBtnAbout) tabBtnAbout.classList.remove('active');
@@ -278,6 +269,12 @@ document.addEventListener('DOMContentLoaded', () => {
         tabPanelAbout.classList.remove('active');
         tabPanelAbout.style.display = 'none';
       }
+
+      // Resume audio so user can hear real-time adjustments before exiting menu
+      if (hasStarted) {
+        await resumePlayback();
+        playBackgroundKeeper();
+      }
     }
   }
 
@@ -287,16 +284,8 @@ document.addEventListener('DOMContentLoaded', () => {
     isMenuOpen = true;
     wasAutoPausedByMinimize = false;
 
-    // Instant-mute and pause audio transport with AudioContext suspension
-    await pausePlayback();
-    pauseBackgroundKeeper();
-    if (loadingIndicator) {
-      loadingIndicator.innerText = "PAUSED";
-      loadingIndicator.className = "status-pill";
-    }
-
-    // Switch to target tab
-    switchMenuTab(targetTab);
+    // Switch to target tab (handles audio pausing for 'about' or resuming for 'sound')
+    await switchMenuTab(targetTab);
 
     // Show menu modal dialog
     if (menuModal) {
@@ -331,13 +320,9 @@ document.addEventListener('DOMContentLoaded', () => {
       menuBtn.classList.remove('active');
     }
 
-    // Unmute and resume audio transport with AudioContext resume
+    // Ensure audio is running upon exiting menu
     await resumePlayback();
     playBackgroundKeeper();
-    if (loadingIndicator) {
-      loadingIndicator.innerText = "PLAYING";
-      loadingIndicator.className = "status-pill ready";
-    }
   }
 
   // Listen for browser back / forward navigation to exit or re-enter the menu
@@ -403,12 +388,9 @@ document.addEventListener('DOMContentLoaded', () => {
       // Unlock controls
       if (autoplayToggleBtn) autoplayToggleBtn.disabled = false;
       if (menuBtn) menuBtn.disabled = false;
-      if (runRestToggleBtn) runRestToggleBtn.disabled = false;
-      if (battleBtn) battleBtn.disabled = false;
-      if (loadingIndicator) {
-        loadingIndicator.innerText = "PLAYING";
-        loadingIndicator.className = "status-pill ready";
-      }
+      if (modeRunBtn) modeRunBtn.disabled = false;
+      if (modeRestBtn) modeRestBtn.disabled = false;
+      if (modeBattleBtn) modeBattleBtn.disabled = false;
     });
   }
 
@@ -424,22 +406,25 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 4. Combined Run/Rest Toggle Button Tap
-  if (runRestToggleBtn) {
-    runRestToggleBtn.addEventListener('click', () => {
+  // 4. Three Distinct Mode Button Taps: Run, Rest, Battle
+  if (modeRunBtn) {
+    modeRunBtn.addEventListener('click', () => {
       if (!hasStarted) return;
-      const cue = getActiveCueInfo();
-      const current = (cue && cue.currentMode) ? cue.currentMode : lastSyncedMode;
-      // If currently in Rest mode, toggle to Run. Otherwise (Run or Battle), toggle to Rest.
-      const targetMode = (current === 'QUIET') ? 'EXPLORATION' : 'QUIET';
-      changeGameMode(targetMode);
-      updateActiveModeUi(targetMode);
+      changeGameMode('EXPLORATION');
+      updateActiveModeUi('EXPLORATION');
     });
   }
 
-  // Battle Button Tap
-  if (battleBtn) {
-    battleBtn.addEventListener('click', () => {
+  if (modeRestBtn) {
+    modeRestBtn.addEventListener('click', () => {
+      if (!hasStarted) return;
+      changeGameMode('QUIET');
+      updateActiveModeUi('QUIET');
+    });
+  }
+
+  if (modeBattleBtn) {
+    modeBattleBtn.addEventListener('click', () => {
       if (!hasStarted) return;
       const cue = getActiveCueInfo();
       const current = (cue && cue.currentMode) ? cue.currentMode : lastSyncedMode;
@@ -453,7 +438,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 5. Autoplay Toggle Tap (Off by default)
+  // 5. Auto Toggle Tap (Off by default)
   if (autoplayToggleBtn) {
     updateAutoPlayUi(isAutoPlayEnabled());
     autoplayToggleBtn.addEventListener('click', () => {
@@ -462,7 +447,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 6. Keyboard Shortcuts: Space for Play/Pause/Resume, M/ESC for Menu, 1/R for Run/Rest Toggle, 2/B for Battle, A for Autoplay
+  // 6. Keyboard Shortcuts: Space for Play/Pause, M/ESC for Menu, 1/R for Run, 2 for Rest, 3/B for Battle, A for Auto
   window.addEventListener('keydown', (e) => {
     if (!hasStarted) return;
     const key = e.key.toLowerCase();
@@ -476,12 +461,12 @@ document.addEventListener('DOMContentLoaded', () => {
         openMenu('about', true);
       }
     } else if (e.key === '1' || key === 'r') {
-      const cue = getActiveCueInfo();
-      const current = (cue && cue.currentMode) ? cue.currentMode : lastSyncedMode;
-      const targetMode = (current === 'QUIET') ? 'EXPLORATION' : 'QUIET';
-      changeGameMode(targetMode);
-      updateActiveModeUi(targetMode);
-    } else if (e.key === '2' || key === 'b') {
+      changeGameMode('EXPLORATION');
+      updateActiveModeUi('EXPLORATION');
+    } else if (e.key === '2') {
+      changeGameMode('QUIET');
+      updateActiveModeUi('QUIET');
+    } else if (e.key === '3' || key === 'b') {
       const cue = getActiveCueInfo();
       const current = (cue && cue.currentMode) ? cue.currentMode : lastSyncedMode;
       if (current === 'BATTLE' || current === 'BATTLE_INTRO') {
@@ -505,12 +490,9 @@ document.addEventListener('DOMContentLoaded', () => {
     tabBtnSound.addEventListener('click', () => switchMenuTab('sound'));
   }
 
-  // Close and Resume Playback Buttons (support native history back)
+  // Close Button (supports native history back)
   if (menuCloseBtn) {
     menuCloseBtn.addEventListener('click', () => closeMenu(true));
-  }
-  if (menuResumeBtn) {
-    menuResumeBtn.addEventListener('click', () => closeMenu(true));
   }
 
   // Close when clicking modal backdrop outside dialog

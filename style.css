@@ -392,42 +392,6 @@ body {
     font-weight: 500;
 }
 
-.menu-footer {
-    padding: 0.85rem 1.25rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(10, 16, 25, 0.6);
-    display: flex;
-    justify-content: center;
-}
-
-.menu-resume-btn {
-    width: 100%;
-    max-width: 320px;
-    background: rgba(27, 38, 54, 0.95);
-    border: 1px solid var(--gold);
-    border-radius: 9999px;
-    padding: 0.65rem 1.75rem;
-    color: var(--gold);
-    font-size: 0.9rem;
-    font-weight: 800;
-    letter-spacing: 1.2px;
-    text-transform: uppercase;
-    cursor: pointer;
-    font-family: var(--font-heading);
-    transition: all 0.22s ease;
-    box-shadow: 0 0 15px rgba(250, 204, 21, 0.2);
-}
-
-.menu-resume-btn:hover {
-    background: rgba(35, 49, 69, 1);
-    transform: scale(1.02);
-    box-shadow: 0 0 22px rgba(250, 204, 21, 0.35);
-}
-
-.menu-resume-btn:active {
-    transform: scale(0.98);
-}
-
 @keyframes startPulse {
     0%, 100% {
         box-shadow: 0 0 18px rgba(250, 204, 21, 0.25);
