@@ -47,12 +47,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const tabBtnSound = document.getElementById('tab-btn-sound');
   const tabPanelAbout = document.getElementById('tab-panel-about');
   const tabPanelSound = document.getElementById('tab-panel-sound');
-  const menuBackBtn = document.getElementById('menu-back-btn');
   const menuCloseBtn = document.getElementById('menu-close-btn');
   const menuResumeBtn = document.getElementById('menu-resume-btn');
 
   // Mixer DOM Elements (inside Menu Sound tab)
-  const mixerToggleBtn = document.getElementById('mixer-toggle-btn');
   const presetButtons = document.querySelectorAll('.preset-btn');
   const sliderWarmth = document.getElementById('slider-warmth');
   const sliderTreble = document.getElementById('slider-treble');
@@ -269,7 +267,6 @@ document.addEventListener('DOMContentLoaded', () => {
         tabPanelSound.style.display = 'none';
       }
       if (menuBtn) menuBtn.classList.add('active');
-      if (mixerToggleBtn) mixerToggleBtn.classList.remove('active');
     } else if (tabName === 'sound') {
       if (tabBtnSound) tabBtnSound.classList.add('active');
       if (tabBtnAbout) tabBtnAbout.classList.remove('active');
@@ -281,13 +278,11 @@ document.addEventListener('DOMContentLoaded', () => {
         tabPanelAbout.classList.remove('active');
         tabPanelAbout.style.display = 'none';
       }
-      if (mixerToggleBtn) mixerToggleBtn.classList.add('active');
-      if (menuBtn) menuBtn.classList.remove('active');
     }
   }
 
   // Menu Modal Functions (Pauses with instant mute on open, un-mutes and resumes on close)
-  async function openMenu(targetTab = 'about') {
+  async function openMenu(targetTab = 'about', pushState = true) {
     if (!hasStarted) return;
     isMenuOpen = true;
     wasAutoPausedByMinimize = false;
@@ -307,10 +302,24 @@ document.addEventListener('DOMContentLoaded', () => {
     if (menuModal) {
       menuModal.style.display = 'flex';
     }
+
+    // Push browser history state for seamless browser back button navigation
+    if (pushState && window.location.hash !== '#menu') {
+      try {
+        history.pushState({ menuOpen: true, tab: targetTab }, '', '#menu');
+      } catch (e) {}
+    }
   }
 
-  async function closeMenu() {
+  async function closeMenu(triggerHistoryBack = true) {
     if (!hasStarted) return;
+
+    // If closing via UI and #menu is present in URL hash, trigger history.back() for native browser back stack
+    if (triggerHistoryBack && window.location.hash === '#menu') {
+      history.back();
+      return; // popstate handler will finalize closeMenu(false)
+    }
+
     isMenuOpen = false;
     wasAutoPausedByMinimize = false;
 
@@ -321,9 +330,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (menuBtn) {
       menuBtn.classList.remove('active');
     }
-    if (mixerToggleBtn) {
-      mixerToggleBtn.classList.remove('active');
-    }
 
     // Unmute and resume audio transport with AudioContext resume
     await resumePlayback();
@@ -333,6 +339,20 @@ document.addEventListener('DOMContentLoaded', () => {
       loadingIndicator.className = "status-pill ready";
     }
   }
+
+  // Listen for browser back / forward navigation to exit or re-enter the menu
+  window.addEventListener('popstate', (e) => {
+    if (!hasStarted) return;
+    const isMenuTarget = (e.state && e.state.menuOpen) || window.location.hash === '#menu';
+    if (isMenuTarget) {
+      const tab = (e.state && e.state.tab) ? e.state.tab : 'about';
+      openMenu(tab, false);
+    } else {
+      if (isMenuOpen) {
+        closeMenu(false);
+      }
+    }
+  });
 
   // Play / Pause internal logic (preserved for keyboard shortcuts & future features)
   async function togglePlayPause() {
@@ -383,7 +403,6 @@ document.addEventListener('DOMContentLoaded', () => {
       // Unlock controls
       if (autoplayToggleBtn) autoplayToggleBtn.disabled = false;
       if (menuBtn) menuBtn.disabled = false;
-      if (mixerToggleBtn) mixerToggleBtn.disabled = false;
       if (runRestToggleBtn) runRestToggleBtn.disabled = false;
       if (battleBtn) battleBtn.disabled = false;
       if (loadingIndicator) {
@@ -397,10 +416,10 @@ document.addEventListener('DOMContentLoaded', () => {
   if (menuBtn) {
     menuBtn.addEventListener('click', () => {
       if (!hasStarted) return;
-      if (isMenuOpen && activeMenuTab === 'about') {
-        closeMenu();
+      if (isMenuOpen) {
+        closeMenu(true);
       } else {
-        openMenu('about');
+        openMenu('about', true);
       }
     });
   }
@@ -452,9 +471,9 @@ document.addEventListener('DOMContentLoaded', () => {
       togglePlayPause();
     } else if (key === 'm' || e.key === 'Escape') {
       if (isMenuOpen) {
-        closeMenu();
+        closeMenu(true);
       } else {
-        openMenu('about');
+        openMenu('about', true);
       }
     } else if (e.key === '1' || key === 'r') {
       const cue = getActiveCueInfo();
@@ -478,19 +497,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 7. Sound Controls Header Button (Opens Menu Modal on Sound Tab)
-  if (mixerToggleBtn) {
-    mixerToggleBtn.addEventListener('click', () => {
-      if (!hasStarted) return;
-      if (isMenuOpen && activeMenuTab === 'sound') {
-        closeMenu();
-      } else {
-        openMenu('sound');
-      }
-    });
-  }
-
-  // 8. Menu Modal Tab Buttons & Navigation
+  // 7. Menu Modal Tab Buttons & Navigation
   if (tabBtnAbout) {
     tabBtnAbout.addEventListener('click', () => switchMenuTab('about'));
   }
@@ -498,22 +505,19 @@ document.addEventListener('DOMContentLoaded', () => {
     tabBtnSound.addEventListener('click', () => switchMenuTab('sound'));
   }
 
-  // Back, Close, and Resume Playback Buttons
-  if (menuBackBtn) {
-    menuBackBtn.addEventListener('click', () => closeMenu());
-  }
+  // Close and Resume Playback Buttons (support native history back)
   if (menuCloseBtn) {
-    menuCloseBtn.addEventListener('click', () => closeMenu());
+    menuCloseBtn.addEventListener('click', () => closeMenu(true));
   }
   if (menuResumeBtn) {
-    menuResumeBtn.addEventListener('click', () => closeMenu());
+    menuResumeBtn.addEventListener('click', () => closeMenu(true));
   }
 
   // Close when clicking modal backdrop outside dialog
   if (menuModal) {
     menuModal.addEventListener('click', (e) => {
       if (e.target === menuModal) {
-        closeMenu();
+        closeMenu(true);
       }
     });
   }

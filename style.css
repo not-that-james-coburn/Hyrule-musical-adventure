@@ -14,6 +14,11 @@
     --red-battle: #ef4444;
     --red-battle-glow: rgba(239, 68, 68, 0.35);
     --amber-pending: #fb923c;
+
+    /* Zelda Typography */
+    --font-title: 'Cinzel Decorative', 'Cinzel', Georgia, serif;
+    --font-heading: 'Cinzel', Georgia, serif;
+    --font-body: 'Marcellus', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, serif;
 }
 
 * {
@@ -26,31 +31,38 @@
 body {
     background-color: var(--bg-dark);
     color: var(--text-primary);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    font-family: var(--font-body);
     display: flex;
     flex-direction: column;
-    justify-content: flex-start;
+    justify-content: center;
     align-items: center;
     min-height: 100vh;
+    min-height: 100dvh;
     padding: 0;
     margin: 0;
     overflow-x: hidden;
 }
 
-/* Console Container - Open & Borderless */
+/* Console Container - Centered Vertically on Screen */
 .nintendo-console {
     position: relative;
     background: transparent;
     border: none;
     border-radius: 0;
-    padding: 0.75rem 0 1rem 0;
+    padding: 1.5rem 0;
     width: 100%;
     max-width: 100%;
     box-shadow: none;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    min-height: 100dvh;
+    margin: auto 0;
+    gap: 1.25rem;
     overflow-x: hidden;
+    box-sizing: border-box;
 }
 
 /* Splash Screen / Start Overlay (Clean, Minimal Title & Subtitle) */
@@ -92,6 +104,7 @@ body {
 }
 
 .splash-badge {
+    font-family: var(--font-heading);
     font-size: 0.68rem;
     font-weight: 800;
     letter-spacing: 2px;
@@ -105,19 +118,21 @@ body {
 }
 
 .splash-title {
-    font-size: 2.2rem;
+    font-family: var(--font-title);
+    font-size: 2.4rem;
     font-weight: 900;
-    letter-spacing: 2px;
+    letter-spacing: 3px;
     color: #ffffff;
-    line-height: 1.1;
-    text-shadow: 0 0 20px rgba(250, 204, 21, 0.25);
+    line-height: 1.15;
+    text-shadow: 0 0 25px rgba(250, 204, 21, 0.35);
 }
 
 .splash-subtitle {
-    font-size: 0.95rem;
-    line-height: 1.5;
+    font-family: var(--font-body);
+    font-size: 1rem;
+    line-height: 1.55;
     color: #94a3b8;
-    max-width: 380px;
+    max-width: 400px;
     margin-bottom: 0.75rem;
 }
 
@@ -163,9 +178,11 @@ body {
 }
 
 .start-btn-text {
+    font-family: var(--font-heading);
     font-size: 0.95rem;
     font-weight: 800;
-    letter-spacing: 1px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
 }
 
 @keyframes startPulse {
@@ -239,10 +256,10 @@ body {
     border-radius: 8px;
     font-size: 0.8rem;
     font-weight: 700;
-    letter-spacing: 0.8px;
+    letter-spacing: 1px;
     cursor: pointer;
     transition: all 0.2s ease;
-    font-family: inherit;
+    font-family: var(--font-heading);
 }
 
 .menu-tab-btn:hover {
@@ -316,11 +333,12 @@ body {
 }
 
 .menu-section-title {
-    font-size: 1.1rem;
+    font-family: var(--font-title);
+    font-size: 1.15rem;
     font-weight: 800;
     color: #f8fafc;
     margin-bottom: 0.85rem;
-    letter-spacing: 0.3px;
+    letter-spacing: 1px;
 }
 
 .about-content {
@@ -330,8 +348,9 @@ body {
 }
 
 .about-paragraph {
-    font-size: 0.88rem;
-    line-height: 1.55;
+    font-family: var(--font-body);
+    font-size: 0.92rem;
+    line-height: 1.6;
     color: #94a3b8;
 }
 
@@ -358,15 +377,17 @@ body {
 }
 
 .spec-label {
+    font-family: var(--font-heading);
     font-size: 0.68rem;
     font-weight: 700;
     color: var(--gold);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.8px;
 }
 
 .spec-value {
-    font-size: 0.78rem;
+    font-family: var(--font-body);
+    font-size: 0.82rem;
     color: #cbd5e1;
     font-weight: 500;
 }
@@ -389,9 +410,10 @@ body {
     color: var(--gold);
     font-size: 0.9rem;
     font-weight: 800;
-    letter-spacing: 0.5px;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
     cursor: pointer;
-    font-family: inherit;
+    font-family: var(--font-heading);
     transition: all 0.22s ease;
     box-shadow: 0 0 15px rgba(250, 204, 21, 0.2);
 }
@@ -424,6 +446,7 @@ body {
     align-items: center;
     padding: 0.5rem 1.5rem;
     width: 100%;
+    max-width: 900px;
     box-sizing: border-box;
 }
 
@@ -433,9 +456,10 @@ body {
 }
 
 .brand-text {
-    font-size: 1rem;
+    font-family: var(--font-title);
+    font-size: 1.1rem;
     font-weight: 800;
-    letter-spacing: 1.8px;
+    letter-spacing: 2px;
     color: #f8fafc;
     text-transform: uppercase;
 }
@@ -447,7 +471,6 @@ body {
 }
 
 .header-btn,
-.mixer-toggle-btn,
 .random-toggle-btn,
 .cycle-toggle-btn {
     background: transparent;
@@ -457,18 +480,17 @@ body {
     padding: 0.35rem 0.65rem;
     font-size: 0.72rem;
     font-weight: 700;
-    letter-spacing: 0.8px;
+    letter-spacing: 1px;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
     transition: all 0.2s ease;
-    font-family: inherit;
+    font-family: var(--font-heading);
     line-height: 1.2;
 }
 
 .header-btn:hover,
-.mixer-toggle-btn:hover,
 .random-toggle-btn:hover,
 .cycle-toggle-btn:hover {
     color: #ffffff;
@@ -476,7 +498,6 @@ body {
 }
 
 .header-btn.active,
-.mixer-toggle-btn.active,
 .random-toggle-btn.active,
 .cycle-toggle-btn.active {
     color: #38bdf8;
@@ -484,7 +505,6 @@ body {
 }
 
 .header-btn:disabled,
-.mixer-toggle-btn:disabled,
 .random-toggle-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
@@ -498,7 +518,8 @@ body {
 }
 
 .status-pill {
-    font-size: 0.7rem;
+    font-family: var(--font-heading);
+    font-size: 0.68rem;
     font-weight: 700;
     padding: 0.25rem 0.65rem;
     border-radius: 9999px;
@@ -583,11 +604,12 @@ body {
     border-radius: 6px;
     padding: 0.28rem 0.55rem;
     font-size: 0.68rem;
-    font-weight: 600;
+    font-weight: 700;
     cursor: pointer;
     white-space: nowrap;
     transition: all 0.18s ease;
-    font-family: inherit;
+    font-family: var(--font-heading);
+    letter-spacing: 0.5px;
 }
 
 .preset-btn:hover {
@@ -751,7 +773,10 @@ body {
     padding: 0.4rem 1.5rem;
     background: transparent;
     border: none;
-    font-size: 0.7rem;
+    font-size: 0.68rem;
+    font-family: var(--font-heading);
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
     color: #64748b;
 }
 
@@ -773,6 +798,7 @@ body {
     align-items: center;
     padding: 0.5rem 1.5rem 0.8rem 1.5rem;
     width: 100%;
+    max-width: 900px;
     box-sizing: border-box;
     gap: 1rem;
     background: transparent;
@@ -793,11 +819,12 @@ body {
     padding: 0.45rem 1.15rem;
     border-radius: 6px;
     font-size: 0.85rem;
-    font-weight: 600;
-    letter-spacing: 0.5px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
     cursor: pointer;
     transition: all 0.2s ease;
-    font-family: inherit;
+    font-family: var(--font-heading);
     line-height: 1.2;
     user-select: none;
 }

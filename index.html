@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Hyrule Field Dynamic Audio Sequencer</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Cinzel+Decorative:wght@700;900&family=Marcellus&display=swap" rel="stylesheet">
     <script type="importmap">
     {
       "imports": {
@@ -37,7 +40,6 @@
                         <button id="tab-btn-sound" class="menu-tab-btn" data-tab="sound">SOUND</button>
                     </div>
                     <div class="menu-header-actions">
-                        <button id="menu-back-btn" class="menu-action-btn" title="Back to Music [M / ESC]">← BACK</button>
                         <button id="menu-close-btn" class="menu-close-btn" aria-label="Close Menu" title="Close [ESC]">✕</button>
                     </div>
                 </header>
@@ -166,7 +168,6 @@
             <div class="header-actions">
                 <button id="menu-btn" class="header-btn" aria-label="Open Menu" title="Menu [M / ESC]">MENU</button>
                 <button id="autoplay-toggle-btn" class="header-btn inactive" aria-label="Toggle Autoplay Cycling" title="Toggle Autoplay Mode Cycling [A]">AUTOPLAY: OFF</button>
-                <button id="mixer-toggle-btn" class="header-btn" aria-label="Open Sound Controls" title="Sound Controls">SOUND</button>
                 <div id="loading-indicator" class="status-pill loading">Loading...</div>
             </div>
         </header>
