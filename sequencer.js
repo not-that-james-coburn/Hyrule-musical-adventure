@@ -1960,9 +1960,10 @@ export class HyruleSequencer {
   }
 
   /**
-   * Instant-Mute Pause: eliminates lingering note tails, reverb feedback, and voice hangover
+   * Instant-Mute Pause: eliminates lingering note tails, reverb feedback, and voice hangover,
+   * and suspends the underlying AudioContext so hardware audio time stops advancing (preventing catch-up rush).
    */
-  pausePlayback() {
+  async pausePlayback() {
     // 1. Immediately pause Tone.Transport
     const transport = Tone.getTransport();
     if (transport && transport.state === 'started') {
@@ -1986,13 +1987,29 @@ export class HyruleSequencer {
         }
       });
     }
+
+    // 4. Suspend AudioContext so audio hardware clock freezes and does NOT run ahead of Transport timeline
+    const rawCtx = Tone.getContext().rawContext;
+    if (rawCtx && typeof rawCtx.suspend === 'function' && rawCtx.state === 'running') {
+      try {
+        await rawCtx.suspend();
+      } catch (e) {}
+    }
   }
 
   /**
-   * Unmute and resume playback cleanly
+   * Unmute and resume playback cleanly with zero catch-up drift
    */
-  resumePlayback() {
-    // 1. Unmute destination & restore masterPreBus
+  async resumePlayback() {
+    // 1. Resume AudioContext so hardware audio time unfreezes exactly where it stopped
+    const rawCtx = Tone.getContext().rawContext;
+    if (rawCtx && typeof rawCtx.resume === 'function' && rawCtx.state === 'suspended') {
+      try {
+        await rawCtx.resume();
+      } catch (e) {}
+    }
+
+    // 2. Unmute destination & restore masterPreBus
     Tone.getDestination().mute = false;
     if (this.masterPreBus) {
       try {
@@ -2001,7 +2018,7 @@ export class HyruleSequencer {
       } catch (e) {}
     }
 
-    // 2. Resume Tone.Transport
+    // 3. Resume Tone.Transport
     const transport = Tone.getTransport();
     if (transport && transport.state !== 'started') {
       transport.start();
@@ -2386,12 +2403,12 @@ export function getTimeOfDayInfo() {
   return null;
 }
 
-export function pausePlayback() {
-  if (sequencer) sequencer.pausePlayback();
+export async function pausePlayback() {
+  if (sequencer) await sequencer.pausePlayback();
 }
 
-export function resumePlayback() {
-  if (sequencer) sequencer.resumePlayback();
+export async function resumePlayback() {
+  if (sequencer) await sequencer.resumePlayback();
 }
 
 

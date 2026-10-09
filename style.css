@@ -466,6 +466,7 @@ body {
     border-radius: 0;
     background: transparent;
     box-shadow: none;
+    contain: layout paint;
     -webkit-mask-image: linear-gradient(to right, transparent 0px, black 20px, black calc(100% - 20px), transparent 100%);
     mask-image: linear-gradient(to right, transparent 0px, black 20px, black calc(100% - 20px), transparent 100%);
 }
@@ -484,15 +485,11 @@ body {
 .viewport-canvas::before {
     left: 0;
     background: linear-gradient(to right, rgba(8, 12, 16, 0.95), transparent);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
 }
 
 .viewport-canvas::after {
     right: 0;
     background: linear-gradient(to left, rgba(8, 12, 16, 0.95), transparent);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
 }
 
 #note-stream-canvas {

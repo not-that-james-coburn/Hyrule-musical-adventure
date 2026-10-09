@@ -121,13 +121,138 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Mobile Background Audio Keep-Alive & Media Session Registration
+  let bgAudioElement = null;
+
+  function createSilentAudioBlobUrl() {
+    const sampleRate = 8000;
+    const numSamples = sampleRate; // 1 second of silence
+    const buffer = new ArrayBuffer(44 + numSamples * 2);
+    const view = new DataView(buffer);
+
+    function writeString(offset, string) {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
+    }
+
+    writeString(0, "RIFF");
+    view.setUint32(4, 36 + numSamples * 2, true);
+    writeString(8, "WAVE");
+    writeString(12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true); // Mono
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeString(36, "data");
+    view.setUint32(40, numSamples * 2, true);
+
+    const blob = new Blob([buffer], { type: 'audio/wav' });
+    return URL.createObjectURL(blob);
+  }
+
+  function initBackgroundAudioKeeper() {
+    if (bgAudioElement) return;
+
+    // Enable background audio session on iOS WebKit if supported
+    if (typeof navigator !== 'undefined' && navigator.audioSession) {
+      try {
+        navigator.audioSession.type = 'playback';
+      } catch (e) {}
+    }
+
+    try {
+      bgAudioElement = document.createElement('audio');
+      bgAudioElement.id = 'hyrule-bg-audio-keeper';
+      bgAudioElement.setAttribute('playsinline', '');
+      bgAudioElement.setAttribute('webkit-playsinline', '');
+      bgAudioElement.loop = true;
+      bgAudioElement.volume = 0.01;
+      bgAudioElement.src = createSilentAudioBlobUrl();
+      document.body.appendChild(bgAudioElement);
+    } catch (e) {
+      console.warn('Could not initialize background audio keeper:', e);
+    }
+
+    // Register Media Session API for mobile lock screen controls and background prioritization
+    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+      try {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: 'Hyrule Field (Dynamic Score)',
+          artist: 'Koji Kondo / Nintendo',
+          album: 'The Legend of Zelda: Ocarina of Time',
+          artwork: [
+            {
+              src: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 100 100"><rect width="100" height="100" fill="%230f172a"/><polygon points="50,15 90,85 10,85" fill="%23d4af37"/><polygon points="50,85 30,50 70,50" fill="%230f172a"/></svg>',
+              sizes: '128x128',
+              type: 'image/svg+xml'
+            }
+          ]
+        });
+
+        navigator.mediaSession.setActionHandler('play', async () => {
+          await resumePlayback();
+          playBackgroundKeeper();
+          if (loadingIndicator) {
+            loadingIndicator.innerText = "PLAYING";
+            loadingIndicator.className = "status-pill ready";
+          }
+        });
+
+        navigator.mediaSession.setActionHandler('pause', async () => {
+          await pausePlayback();
+          pauseBackgroundKeeper();
+          if (loadingIndicator) {
+            loadingIndicator.innerText = "PAUSED";
+            loadingIndicator.className = "status-pill";
+          }
+        });
+
+        navigator.mediaSession.setActionHandler('nexttrack', () => {
+          const target = (lastSyncedMode === 'QUIET') ? 'EXPLORATION' : 'QUIET';
+          changeGameMode(target);
+          updateActiveModeUi(target);
+        });
+
+        navigator.mediaSession.setActionHandler('previoustrack', () => {
+          changeGameMode('EXPLORATION');
+          updateActiveModeUi('EXPLORATION');
+        });
+      } catch (e) {
+        console.warn('MediaSession setup failed:', e);
+      }
+    }
+  }
+
+  function playBackgroundKeeper() {
+    if (bgAudioElement) {
+      bgAudioElement.play().catch(() => {});
+    }
+    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = 'playing';
+    }
+  }
+
+  function pauseBackgroundKeeper() {
+    if (bgAudioElement) {
+      bgAudioElement.pause();
+    }
+    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = 'paused';
+    }
+  }
+
   // Menu Slide Overlay Functions (Pauses with instant mute on open, un-mutes and resumes on close)
-  function openMenu() {
+  async function openMenu() {
     if (!hasStarted) return;
     isMenuOpen = true;
 
-    // Instant-mute and pause audio transport
-    pausePlayback();
+    // Instant-mute and pause audio transport with AudioContext suspension
+    await pausePlayback();
+    pauseBackgroundKeeper();
     if (loadingIndicator) {
       loadingIndicator.innerText = "PAUSED";
       loadingIndicator.className = "status-pill";
@@ -143,12 +268,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function closeMenu() {
+  async function closeMenu() {
     if (!hasStarted) return;
     isMenuOpen = false;
 
-    // Unmute and resume audio transport
-    resumePlayback();
+    // Unmute and resume audio transport with AudioContext resume
+    await resumePlayback();
+    playBackgroundKeeper();
     if (loadingIndicator) {
       loadingIndicator.innerText = "PLAYING";
       loadingIndicator.className = "status-pill ready";
@@ -162,21 +288,23 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Play / Pause internal logic (preserved for keyboard shortcuts & future features)
-  function togglePlayPause() {
+  async function togglePlayPause() {
     if (!hasStarted) return;
     if (isMenuOpen) {
-      closeMenu();
+      await closeMenu();
       return;
     }
     const transport = Tone.getTransport();
     if (transport.state === 'started') {
-      pausePlayback();
+      await pausePlayback();
+      pauseBackgroundKeeper();
       if (loadingIndicator) {
         loadingIndicator.innerText = "PAUSED";
         loadingIndicator.className = "status-pill";
       }
     } else {
-      resumePlayback();
+      await resumePlayback();
+      playBackgroundKeeper();
       if (loadingIndicator) {
         loadingIndicator.innerText = "PLAYING";
         loadingIndicator.className = "status-pill ready";
@@ -195,6 +323,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Unlock AudioContext & start sequencer with runway lead-in
         await Tone.start();
+        initBackgroundAudioKeeper();
+        playBackgroundKeeper();
         await changeGameMode('EXPLORATION');
         updateActiveModeUi('EXPLORATION');
 
@@ -214,7 +344,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       } else {
         // Overlay was re-opened via MENU button; Resume was pressed
-        closeMenu();
+        await closeMenu();
       }
     });
   }
@@ -429,22 +559,53 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let cachedCanvasWidth = 800;
   const cachedCanvasHeight = 300; // 300px height for uncrowded multi-track separation
+  let resizeRafId = null;
 
-  // Setup HiDPI Canvas Scaling (spans full viewport width in any orientation)
+  // Setup HiDPI Canvas Scaling (spans full viewport width in any orientation without GPU thrashing)
   function setupCanvasDPI() {
     if (!canvas || !ctx) return;
-    const dpr = window.devicePixelRatio || 1;
-    cachedCanvasWidth = canvas.clientWidth || window.innerWidth || 800;
+    const dpr = Math.min(2, window.devicePixelRatio || 1); // Cap DPR at 2 for mobile GPU efficiency
+    const newWidth = canvas.clientWidth || window.innerWidth || 800;
+    cachedCanvasWidth = newWidth;
 
-    canvas.width = Math.round(cachedCanvasWidth * dpr);
-    canvas.height = Math.round(cachedCanvasHeight * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const targetW = Math.round(newWidth * dpr);
+    const targetH = Math.round(cachedCanvasHeight * dpr);
+
+    // Only update canvas dimensions if they actually changed to prevent bitmap texture reallocations
+    if (canvas.width !== targetW || canvas.height !== targetH) {
+      canvas.width = targetW;
+      canvas.height = targetH;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
   }
 
-  window.addEventListener('resize', setupCanvasDPI);
+  function debouncedCanvasResize() {
+    if (resizeRafId !== null) return;
+    resizeRafId = requestAnimationFrame(() => {
+      resizeRafId = null;
+      setupCanvasDPI();
+    });
+  }
+
+  window.addEventListener('resize', debouncedCanvasResize, { passive: true });
   window.addEventListener('orientationchange', () => {
-    setTimeout(setupCanvasDPI, 50);
-  });
+    debouncedCanvasResize();
+    setTimeout(debouncedCanvasResize, 150);
+    setTimeout(debouncedCanvasResize, 350);
+  }, { passive: true });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      // Browser minimized: ensure audio keeper continues running smoothly in background
+      if (hasStarted && !isMenuOpen && bgAudioElement && bgAudioElement.paused) {
+        bgAudioElement.play().catch(() => {});
+      }
+    } else {
+      // Returned from background: refresh DPI layout if orientation changed while backgrounded
+      debouncedCanvasResize();
+    }
+  }, { passive: true });
+
   setupCanvasDPI();
 
   // Lane geometry definitions (spacious 300px height with dedicated header clearance for sticky titles)
@@ -546,19 +707,37 @@ document.addEventListener('DOMContentLoaded', () => {
     return { y: noteY, h: noteH };
   }
 
+  let lastVisualizerSec = 0;
+
   // Animation Loop: Renders 60 FPS continuous right-to-left note conveyor with latency sync
   function renderVisualizer() {
+    // If the browser tab/app is completely hidden (minimized on mobile or background tab),
+    // skip canvas draw commands to save 100% CPU for Web Audio synthesis!
+    if (document.hidden) {
+      requestAnimationFrame(renderVisualizer);
+      return;
+    }
+
     const transport = Tone.getTransport();
     const isPlaying = transport && (transport.state === 'started' || transport.state === 'running');
 
     // Audio-to-Visual Latency Sync Compensation
-    let visualizerSec = 0;
+    let visualizerSec = lastVisualizerSec;
     if (isPlaying) {
       const rawCtx = Tone.getContext().rawContext;
       const outputLat = (rawCtx && typeof rawCtx.outputLatency === 'number') ? rawCtx.outputLatency : 0.035;
       const baseLat = (rawCtx && typeof rawCtx.baseLatency === 'number') ? rawCtx.baseLatency : 0.02;
       const audioLatency = outputLat + baseLat + 0.015;
       visualizerSec = Math.max(0, transport.seconds - audioLatency);
+      lastVisualizerSec = visualizerSec;
+    } else if (transport && transport.state === 'paused') {
+      // While paused, stay exactly at the paused transport position instead of resetting to 0!
+      const rawCtx = Tone.getContext().rawContext;
+      const outputLat = (rawCtx && typeof rawCtx.outputLatency === 'number') ? rawCtx.outputLatency : 0.035;
+      const baseLat = (rawCtx && typeof rawCtx.baseLatency === 'number') ? rawCtx.baseLatency : 0.02;
+      const audioLatency = outputLat + baseLat + 0.015;
+      visualizerSec = Math.max(0, transport.seconds - audioLatency);
+      lastVisualizerSec = visualizerSec;
     }
 
     const cueInfo = getActiveCueInfo();
