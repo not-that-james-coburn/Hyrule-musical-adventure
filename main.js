@@ -41,10 +41,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const canvas = document.getElementById('note-stream-canvas');
   const ctx = canvas ? canvas.getContext('2d') : null;
 
-  // Mixer DOM Elements
+  // Dedicated Menu Modal DOM Elements
+  const menuModal = document.getElementById('menu-modal');
+  const tabBtnAbout = document.getElementById('tab-btn-about');
+  const tabBtnSound = document.getElementById('tab-btn-sound');
+  const tabPanelAbout = document.getElementById('tab-panel-about');
+  const tabPanelSound = document.getElementById('tab-panel-sound');
+  const menuBackBtn = document.getElementById('menu-back-btn');
+  const menuCloseBtn = document.getElementById('menu-close-btn');
+  const menuResumeBtn = document.getElementById('menu-resume-btn');
+
+  // Mixer DOM Elements (inside Menu Sound tab)
   const mixerToggleBtn = document.getElementById('mixer-toggle-btn');
-  const mixerCloseBtn = document.getElementById('mixer-close-btn');
-  const mixerDrawer = document.getElementById('mixer-drawer');
   const presetButtons = document.querySelectorAll('.preset-btn');
   const sliderWarmth = document.getElementById('slider-warmth');
   const sliderTreble = document.getElementById('slider-treble');
@@ -60,7 +68,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const valVolume = document.getElementById('val-volume');
 
   let hasStarted = false;
-  let isMenuOpen = true;
+  let isMenuOpen = false;
+  let activeMenuTab = 'about';
   let lastSyncedMode = 'EXPLORATION';
 
   // 1. Audio Loading Lifecycle
@@ -245,8 +254,40 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Menu Slide Overlay Functions (Pauses with instant mute on open, un-mutes and resumes on close)
-  async function openMenu() {
+  // Menu Modal Tab Switcher ('about' vs 'sound')
+  function switchMenuTab(tabName) {
+    activeMenuTab = tabName;
+    if (tabName === 'about') {
+      if (tabBtnAbout) tabBtnAbout.classList.add('active');
+      if (tabBtnSound) tabBtnSound.classList.remove('active');
+      if (tabPanelAbout) {
+        tabPanelAbout.classList.add('active');
+        tabPanelAbout.style.display = 'block';
+      }
+      if (tabPanelSound) {
+        tabPanelSound.classList.remove('active');
+        tabPanelSound.style.display = 'none';
+      }
+      if (menuBtn) menuBtn.classList.add('active');
+      if (mixerToggleBtn) mixerToggleBtn.classList.remove('active');
+    } else if (tabName === 'sound') {
+      if (tabBtnSound) tabBtnSound.classList.add('active');
+      if (tabBtnAbout) tabBtnAbout.classList.remove('active');
+      if (tabPanelSound) {
+        tabPanelSound.classList.add('active');
+        tabPanelSound.style.display = 'block';
+      }
+      if (tabPanelAbout) {
+        tabPanelAbout.classList.remove('active');
+        tabPanelAbout.style.display = 'none';
+      }
+      if (mixerToggleBtn) mixerToggleBtn.classList.add('active');
+      if (menuBtn) menuBtn.classList.remove('active');
+    }
+  }
+
+  // Menu Modal Functions (Pauses with instant mute on open, un-mutes and resumes on close)
+  async function openMenu(targetTab = 'about') {
     if (!hasStarted) return;
     isMenuOpen = true;
     wasAutoPausedByMinimize = false;
@@ -259,13 +300,12 @@ document.addEventListener('DOMContentLoaded', () => {
       loadingIndicator.className = "status-pill";
     }
 
-    // Set button label to Resume
-    if (startBtnLabel) startBtnLabel.innerText = "Resume";
+    // Switch to target tab
+    switchMenuTab(targetTab);
 
-    // Slide overlay back in place
-    if (playOverlay) {
-      playOverlay.classList.remove('slide-out');
-      playOverlay.classList.add('slide-in');
+    // Show menu modal dialog
+    if (menuModal) {
+      menuModal.style.display = 'flex';
     }
   }
 
@@ -274,18 +314,23 @@ document.addEventListener('DOMContentLoaded', () => {
     isMenuOpen = false;
     wasAutoPausedByMinimize = false;
 
+    // Hide menu modal dialog
+    if (menuModal) {
+      menuModal.style.display = 'none';
+    }
+    if (menuBtn) {
+      menuBtn.classList.remove('active');
+    }
+    if (mixerToggleBtn) {
+      mixerToggleBtn.classList.remove('active');
+    }
+
     // Unmute and resume audio transport with AudioContext resume
     await resumePlayback();
     playBackgroundKeeper();
     if (loadingIndicator) {
       loadingIndicator.innerText = "PLAYING";
       loadingIndicator.className = "status-pill ready";
-    }
-
-    // Slide overlay out of view
-    if (playOverlay) {
-      playOverlay.classList.remove('slide-in');
-      playOverlay.classList.add('slide-out');
     }
   }
 
@@ -315,51 +360,47 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // 2. Play / Resume Button Overlay Tap
+  // 2. Play / Begin Button Tap on Splash Overlay
   if (startBtn) {
     startBtn.addEventListener('click', async () => {
-      if (startBtn.disabled) return;
+      if (startBtn.disabled || hasStarted) return;
 
-      if (!hasStarted) {
-        hasStarted = true;
-        isMenuOpen = false;
+      hasStarted = true;
+      isMenuOpen = false;
 
-        // Unlock AudioContext & start sequencer with runway lead-in
-        await Tone.start();
-        initBackgroundAudioKeeper();
-        playBackgroundKeeper();
-        await changeGameMode('EXPLORATION');
-        updateActiveModeUi('EXPLORATION');
+      // Unlock AudioContext & start sequencer with runway lead-in
+      await Tone.start();
+      initBackgroundAudioKeeper();
+      playBackgroundKeeper();
+      await changeGameMode('EXPLORATION');
+      updateActiveModeUi('EXPLORATION');
 
-        // Slide overlay out of view
-        if (playOverlay) {
-          playOverlay.classList.add('slide-out');
-        }
+      // Slide splash overlay out of view
+      if (playOverlay) {
+        playOverlay.classList.add('slide-out');
+      }
 
-        // Unlock controls
-        if (autoplayToggleBtn) autoplayToggleBtn.disabled = false;
-        if (menuBtn) menuBtn.disabled = false;
-        if (runRestToggleBtn) runRestToggleBtn.disabled = false;
-        if (battleBtn) battleBtn.disabled = false;
-        if (loadingIndicator) {
-          loadingIndicator.innerText = "PLAYING";
-          loadingIndicator.className = "status-pill ready";
-        }
-      } else {
-        // Overlay was re-opened via MENU button; Resume was pressed
-        await closeMenu();
+      // Unlock controls
+      if (autoplayToggleBtn) autoplayToggleBtn.disabled = false;
+      if (menuBtn) menuBtn.disabled = false;
+      if (mixerToggleBtn) mixerToggleBtn.disabled = false;
+      if (runRestToggleBtn) runRestToggleBtn.disabled = false;
+      if (battleBtn) battleBtn.disabled = false;
+      if (loadingIndicator) {
+        loadingIndicator.innerText = "PLAYING";
+        loadingIndicator.className = "status-pill ready";
       }
     });
   }
 
-  // 3. Menu Button Tap
+  // 3. Menu Button Tap (Toggles About pane inside Menu Modal)
   if (menuBtn) {
     menuBtn.addEventListener('click', () => {
       if (!hasStarted) return;
-      if (isMenuOpen) {
+      if (isMenuOpen && activeMenuTab === 'about') {
         closeMenu();
       } else {
-        openMenu();
+        openMenu('about');
       }
     });
   }
@@ -413,7 +454,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (isMenuOpen) {
         closeMenu();
       } else {
-        openMenu();
+        openMenu('about');
       }
     } else if (e.key === '1' || key === 'r') {
       const cue = getActiveCueInfo();
@@ -437,19 +478,43 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 4. Mixer Drawer Toggle & Controls
-  if (mixerToggleBtn && mixerDrawer) {
+  // 7. Sound Controls Header Button (Opens Menu Modal on Sound Tab)
+  if (mixerToggleBtn) {
     mixerToggleBtn.addEventListener('click', () => {
-      const isHidden = mixerDrawer.style.display === 'none';
-      mixerDrawer.style.display = isHidden ? 'block' : 'none';
-      mixerToggleBtn.classList.toggle('active', isHidden);
+      if (!hasStarted) return;
+      if (isMenuOpen && activeMenuTab === 'sound') {
+        closeMenu();
+      } else {
+        openMenu('sound');
+      }
     });
   }
 
-  if (mixerCloseBtn && mixerDrawer) {
-    mixerCloseBtn.addEventListener('click', () => {
-      mixerDrawer.style.display = 'none';
-      if (mixerToggleBtn) mixerToggleBtn.classList.remove('active');
+  // 8. Menu Modal Tab Buttons & Navigation
+  if (tabBtnAbout) {
+    tabBtnAbout.addEventListener('click', () => switchMenuTab('about'));
+  }
+  if (tabBtnSound) {
+    tabBtnSound.addEventListener('click', () => switchMenuTab('sound'));
+  }
+
+  // Back, Close, and Resume Playback Buttons
+  if (menuBackBtn) {
+    menuBackBtn.addEventListener('click', () => closeMenu());
+  }
+  if (menuCloseBtn) {
+    menuCloseBtn.addEventListener('click', () => closeMenu());
+  }
+  if (menuResumeBtn) {
+    menuResumeBtn.addEventListener('click', () => closeMenu());
+  }
+
+  // Close when clicking modal backdrop outside dialog
+  if (menuModal) {
+    menuModal.addEventListener('click', (e) => {
+      if (e.target === menuModal) {
+        closeMenu();
+      }
     });
   }
 
