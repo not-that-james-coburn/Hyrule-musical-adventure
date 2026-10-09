@@ -249,6 +249,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function openMenu() {
     if (!hasStarted) return;
     isMenuOpen = true;
+    wasAutoPausedByMinimize = false;
 
     // Instant-mute and pause audio transport with AudioContext suspension
     await pausePlayback();
@@ -271,6 +272,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function closeMenu() {
     if (!hasStarted) return;
     isMenuOpen = false;
+    wasAutoPausedByMinimize = false;
 
     // Unmute and resume audio transport with AudioContext resume
     await resumePlayback();
@@ -290,6 +292,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Play / Pause internal logic (preserved for keyboard shortcuts & future features)
   async function togglePlayPause() {
     if (!hasStarted) return;
+    wasAutoPausedByMinimize = false;
     if (isMenuOpen) {
       await closeMenu();
       return;
@@ -594,17 +597,48 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(debouncedCanvasResize, 350);
   }, { passive: true });
 
+  let wasAutoPausedByMinimize = false;
+
+  // Clean minimize / background handler: cleanly suspends Web Audio to prevent OS timer-throttling garble & drift
+  async function handleAppHide() {
+    if (!hasStarted || isMenuOpen) return;
+    const transport = Tone.getTransport();
+    const isPlaying = transport && (transport.state === 'started' || transport.state === 'running');
+    if (isPlaying && !wasAutoPausedByMinimize) {
+      wasAutoPausedByMinimize = true;
+      await pausePlayback();
+      pauseBackgroundKeeper();
+      if (loadingIndicator) {
+        loadingIndicator.innerText = "PAUSED";
+        loadingIndicator.className = "status-pill";
+      }
+    }
+  }
+
+  // Restore handler: cleanly unfreezes AudioContext and continues playback with zero fast-forward rush
+  async function handleAppShow() {
+    debouncedCanvasResize();
+    if (wasAutoPausedByMinimize && !isMenuOpen) {
+      wasAutoPausedByMinimize = false;
+      await resumePlayback();
+      playBackgroundKeeper();
+      if (loadingIndicator) {
+        loadingIndicator.innerText = "PLAYING";
+        loadingIndicator.className = "status-pill ready";
+      }
+    }
+  }
+
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
-      // Browser minimized: ensure audio keeper continues running smoothly in background
-      if (hasStarted && !isMenuOpen && bgAudioElement && bgAudioElement.paused) {
-        bgAudioElement.play().catch(() => {});
-      }
+      handleAppHide();
     } else {
-      // Returned from background: refresh DPI layout if orientation changed while backgrounded
-      debouncedCanvasResize();
+      handleAppShow();
     }
   }, { passive: true });
+
+  window.addEventListener('pagehide', handleAppHide, { passive: true });
+  window.addEventListener('pageshow', handleAppShow, { passive: true });
 
   setupCanvasDPI();
 
