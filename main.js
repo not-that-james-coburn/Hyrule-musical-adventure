@@ -1,32 +1,19 @@
 import * as Tone from 'tone';
 import {
   changeGameMode,
-  getCurrentPlaybackState,
-  getPendingStateChange,
   getActiveCueInfo,
   getStreamNotes,
+  prunePastStreamNotes,
   getMeasureLines,
   whenAudioLoaded,
   sequencer,
-  HyruleSequencer,
   pausePlayback,
   resumePlayback,
   setMixerParameter,
   setMixerPreset,
   getMixerSettings,
-  toggleLinkMovement,
-  setLinkMovement,
-  getLinkMovementState,
-  setAutoPlay,
   toggleAutoPlay,
-  isAutoPlayEnabled,
-  setRandomizer,
-  toggleRandomizer,
-  isRandomizerEnabled,
-  getRandomizerInfo,
-  setAutoCycle,
-  toggleAutoCycle,
-  isAutoCycleEnabled
+  isAutoPlayEnabled
 } from './sequencer.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -416,6 +403,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Unlock AudioContext & start sequencer with runway lead-in
       await Tone.start();
+      try {
+        if (Tone.getContext()) {
+          Tone.getContext().lookAhead = 0.25;
+        }
+      } catch (e) {}
       initBackgroundAudioKeeper();
       playBackgroundKeeper();
       await changeGameMode('EXPLORATION');
@@ -795,79 +787,57 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  function isArpeggioOrPlucked(note) {
-    if (note.trackType !== 'harmony') return false;
-    const inst = (note.instrument || '').toLowerCase();
-    return inst === 'harp' || inst === 'piano' || inst === 'marimba' || inst === 'vibraphone' || note.channel === 6;
-  }
+  // Zero-allocation note layout and color resolver: computes and caches y, h, and colors once per note
+  function ensureNoteLayoutAndColors(note) {
+    if (note._y !== undefined) return;
 
-  function getNoteColors(note) {
-    const isArp = isArpeggioOrPlucked(note);
-    const track = isArp ? 'harmony_arpeggio' : (note.trackType || 'melody');
-    const mode = note.mode || 'EXPLORATION';
-    const trackColors = NOTE_COLORS[track] || NOTE_COLORS.melody;
-    return trackColors[mode] || trackColors.EXPLORATION;
-  }
-
-  function getNoteYAndHeight(note) {
     const track = note.trackType || 'melody';
+    const isArp = Boolean(note.isArp);
 
     if (track === 'melody') {
       const lane = LANES.melody;
       const minMidi = 48;
       const maxMidi = 96;
       const norm = Math.max(0, Math.min(1, (note.midi - minMidi) / (maxMidi - minMidi)));
-      const noteH = 5.5;
-      const noteY = (lane.bottom - 4) - norm * (lane.height - 12) - noteH;
-      return { y: noteY, h: noteH };
-    }
-
-    if (track === 'harmony') {
+      note._h = 5.5;
+      note._y = (lane.bottom - 4) - norm * (lane.height - 12) - note._h;
+    } else if (track === 'harmony') {
       const lane = LANES.harmony;
       const minMidi = 36;
       const maxMidi = 96;
       const norm = Math.max(0, Math.min(1, (note.midi - minMidi) / (maxMidi - minMidi)));
-      const isArp = isArpeggioOrPlucked(note);
-      const noteH = isArp ? 6 : 5.5;
-      const noteY = (lane.bottom - 4) - norm * (lane.height - 13) - noteH;
-      return { y: noteY, h: noteH };
-    }
-
-    if (track === 'bass') {
+      note._h = isArp ? 6 : 5.5;
+      note._y = (lane.bottom - 4) - norm * (lane.height - 13) - note._h;
+    } else if (track === 'bass') {
       const lane = LANES.bass;
       const minMidi = 30;
       const maxMidi = 66;
       const norm = Math.max(0, Math.min(1, (note.midi - minMidi) / (maxMidi - minMidi)));
-      const noteH = 6;
-      const noteY = (lane.bottom - 4) - norm * (lane.height - 13) - noteH;
-      return { y: noteY, h: noteH };
-    }
-
-    // Percussion: dedicated 4 vertical tiers so drum hits never overlap
-    const lane = LANES.percussion;
-    const pitch = note.midi;
-    let noteY = lane.bottom - 11;
-    let noteH = 7;
-
-    if (pitch === 42 || pitch === 44 || pitch === 46) {
-      // Hi-hat tier (top)
-      noteY = lane.top + 6;
-      noteH = 4.5;
-    } else if (pitch === 38 || pitch === 43) {
-      // Snare / Rim tier (mid-upper)
-      noteY = lane.top + 18;
-      noteH = 6;
-    } else if (pitch === 30 || pitch === 31 || pitch === 32 || pitch === 33 || pitch === 34 || pitch === 35) {
-      // Toms / Timpani tier (mid-lower)
-      noteY = lane.top + 29;
-      noteH = 6.5;
+      note._h = 6;
+      note._y = (lane.bottom - 4) - norm * (lane.height - 13) - note._h;
     } else {
-      // Kick drum / Main Bass Beat tier (bottom, pitch 36 or 40)
-      noteY = lane.bottom - 11;
-      noteH = 7.5;
+      // Percussion: dedicated 4 vertical tiers so drum hits never overlap
+      const lane = LANES.percussion;
+      const pitch = note.midi;
+      if (pitch === 42 || pitch === 44 || pitch === 46) {
+        note._y = lane.top + 6;
+        note._h = 4.5;
+      } else if (pitch === 38 || pitch === 43) {
+        note._y = lane.top + 18;
+        note._h = 6;
+      } else if (pitch >= 30 && pitch <= 35) {
+        note._y = lane.top + 29;
+        note._h = 6.5;
+      } else {
+        note._y = lane.bottom - 11;
+        note._h = 7.5;
+      }
     }
 
-    return { y: noteY, h: noteH };
+    const colorTrack = isArp ? 'harmony_arpeggio' : track;
+    const mode = note.mode || 'EXPLORATION';
+    const trackColors = NOTE_COLORS[colorTrack] || NOTE_COLORS.melody;
+    note._colors = trackColors[mode] || trackColors.EXPLORATION;
   }
 
   let lastVisualizerSec = 0;
@@ -938,8 +908,11 @@ document.addEventListener('DOMContentLoaded', () => {
           continue;
         }
 
-        const { y, h } = getNoteYAndHeight(note);
-        const colors = getNoteColors(note);
+        ensureNoteLayoutAndColors(note);
+        const y = note._y;
+        const h = note._h;
+        const colors = note._colors;
+        const isArp = note.isArp;
         const vel = (typeof note.velocity === 'number') ? Math.max(0.1, Math.min(1.0, note.velocity)) : 0.8;
 
         const isPercMuted = (note.trackType === 'percussion' && cueInfo.currentMode === 'QUIET');
@@ -965,18 +938,10 @@ document.addEventListener('DOMContentLoaded', () => {
           alpha *= 0.2;
         }
 
-        const isArp = isArpeggioOrPlucked(note);
         ctx.globalAlpha = alpha;
         ctx.fillStyle = isCurrentlyPlaying ? colors.hit : colors.fill;
         ctx.strokeStyle = colors.stroke;
-        ctx.lineWidth = isArp ? 1.25 : 1;
-
-        if (isArp || vel >= 0.85) {
-          ctx.shadowColor = colors.glow;
-          ctx.shadowBlur = isArp ? 8 : (vel - 0.7) * 15;
-        } else {
-          ctx.shadowBlur = 0;
-        }
+        ctx.lineWidth = isArp ? 1.5 : 1;
 
         ctx.beginPath();
         if (typeof ctx.roundRect === 'function') {
@@ -988,11 +953,15 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.stroke();
       }
 
-      ctx.shadowBlur = 0;
       ctx.globalAlpha = 1.0;
 
       // Draw Playhead line and active collision sparks
       drawPlayhead(ctx, cssHeight, activeNotesHitCount > 0, cueInfo, activeHitVelocitySum);
+
+      // Periodically prune expired notes from visualizer stream to keep array bounded
+      if (streamNotes.length > 200) {
+        prunePastStreamNotes(visualizerSec);
+      }
     }
 
     requestAnimationFrame(renderVisualizer);

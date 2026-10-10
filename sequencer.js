@@ -1,5 +1,12 @@
 import * as Tone from 'tone';
 
+// Configure robust Web Audio lookahead buffer (250ms) to prevent audio underruns and thread-starvation glitches
+try {
+  if (typeof Tone !== 'undefined' && Tone.getContext()) {
+    Tone.getContext().lookAhead = 0.25;
+  }
+} catch (e) {}
+
 // Track active block timing constants
 export const BARS_PER_BLOCK = 8;
 export const BLOCK_DURATION_SEC = 12.8; // 8 bars * 4 beats * (60 / 150 BPM)
@@ -783,8 +790,15 @@ export class HyruleSequencer {
   triggerSafeNote(sampler, note, durationSec, time) {
     if (!this.soundRack) return;
     const now = Tone.now();
+
+    // Stale Note Protection: if an event arrived more than 100ms late due to main thread stutter or backgrounding,
+    // drop it rather than firing a machine-gun burst at `now` that causes perceived audio speeding-up and voice choking
+    if (time < now - 0.10) {
+      return;
+    }
+
     const safeTime = Math.max(time, now);
-    const dur = Math.max(0.04, durationSec);
+    const dur = Math.max(0.04, Math.min(12.0, durationSec));
     const vel = (typeof note.velocity === 'number' && !isNaN(note.velocity))
       ? Math.max(0.01, Math.min(1.0, note.velocity))
       : 0.8;
@@ -1672,7 +1686,11 @@ export class HyruleSequencer {
 
         eventIds.push({ id: eventId, time: noteTransportTime });
 
-        // Add note to visualizer stream
+        // Add note to visualizer stream with precomputed arpeggio identity
+        const isArp = (trackCategory === 'harmony') && (
+          instKey === 'harp' || instKey === 'piano' || instKey === 'marimba' || instKey === 'vibraphone' || track.channel === 6
+        );
+
         this.streamNotes.push({
           name: playedNote.name,
           midi: playedNote.midi,
@@ -1682,6 +1700,7 @@ export class HyruleSequencer {
           trackType: trackCategory,
           instrument: instKey,
           channel: track.channel,
+          isArp,
           mode: chosenBlock.mode,
           cueId: chosenBlock.id,
           phraseIdx: phraseIdx
@@ -1856,9 +1875,16 @@ export class HyruleSequencer {
       }
     });
 
-    // 5. Clean up old visualizer notes (more than 2.5s in the past)
+    // 5. Clean up old visualizer notes (more than 2.0s in the past)
     const currentTransportSec = transport.seconds;
-    this.streamNotes = this.streamNotes.filter(n => (n.transportTime + n.duration) >= (currentTransportSec - 2.5));
+    this.prunePastStreamNotes(currentTransportSec);
+  }
+
+  prunePastStreamNotes(currentTransportSec) {
+    const cutoff = currentTransportSec - 2.0;
+    if (this.streamNotes && this.streamNotes.length > 200) {
+      this.streamNotes = this.streamNotes.filter(n => (n.transportTime + n.duration) >= cutoff);
+    }
   }
 
   async startEngine() {
@@ -2238,6 +2264,10 @@ export function whenAudioLoaded() {
 
 export function getStreamNotes() {
   return sequencer.streamNotes;
+}
+
+export function prunePastStreamNotes(currentTransportSec) {
+  sequencer.prunePastStreamNotes(currentTransportSec);
 }
 
 export function getActiveCueInfo() {
