@@ -1649,6 +1649,7 @@ export class HyruleSequencer {
       }
 
       const trackCategory = this.getTrackCategory(track, trIdx);
+      const instKey = this.getInstrumentKeyForTrack(trIdx);
       const sampler = this.getSamplerForTrack(trIdx);
 
       const notesInBlock = track.notes.filter(note =>
@@ -1679,6 +1680,8 @@ export class HyruleSequencer {
           transportTime: noteTransportTime,
           duration: Math.max(0.08, noteDurationSec),
           trackType: trackCategory,
+          instrument: instKey,
+          channel: track.channel,
           mode: chosenBlock.mode,
           cueId: chosenBlock.id,
           phraseIdx: phraseIdx

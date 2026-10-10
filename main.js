@@ -777,6 +777,12 @@ document.addEventListener('DOMContentLoaded', () => {
       QUIET: { fill: '#818cf8', stroke: '#c7d2fe', glow: 'rgba(129, 140, 248, 0.5)', hit: '#ffffff' },
       BATTLE: { fill: '#f97316', stroke: '#fed7aa', glow: 'rgba(249, 115, 22, 0.5)', hit: '#ffffff' }
     },
+    // Distinct lighter, luminous shade within mode palette for arpeggiated/plucked runs (harp, piano, bells)
+    harmony_arpeggio: {
+      EXPLORATION: { fill: '#fef08a', stroke: '#ffffff', glow: 'rgba(254, 240, 138, 0.7)', hit: '#ffffff' },
+      QUIET: { fill: '#c7d2fe', stroke: '#ffffff', glow: 'rgba(199, 210, 254, 0.7)', hit: '#ffffff' },
+      BATTLE: { fill: '#fed7aa', stroke: '#ffffff', glow: 'rgba(254, 215, 170, 0.7)', hit: '#ffffff' }
+    },
     bass: {
       EXPLORATION: { fill: '#10b981', stroke: '#34d399', glow: 'rgba(16, 185, 129, 0.4)', hit: '#a7f3d0' },
       QUIET: { fill: '#6366f1', stroke: '#818cf8', glow: 'rgba(99, 102, 241, 0.4)', hit: '#c7d2fe' },
@@ -789,8 +795,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
+  function isArpeggioOrPlucked(note) {
+    if (note.trackType !== 'harmony') return false;
+    const inst = (note.instrument || '').toLowerCase();
+    return inst === 'harp' || inst === 'piano' || inst === 'marimba' || inst === 'vibraphone' || note.channel === 6;
+  }
+
   function getNoteColors(note) {
-    const track = note.trackType || 'melody';
+    const isArp = isArpeggioOrPlucked(note);
+    const track = isArp ? 'harmony_arpeggio' : (note.trackType || 'melody');
     const mode = note.mode || 'EXPLORATION';
     const trackColors = NOTE_COLORS[track] || NOTE_COLORS.melody;
     return trackColors[mode] || trackColors.EXPLORATION;
@@ -814,7 +827,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const minMidi = 36;
       const maxMidi = 96;
       const norm = Math.max(0, Math.min(1, (note.midi - minMidi) / (maxMidi - minMidi)));
-      const noteH = 5.5;
+      const isArp = isArpeggioOrPlucked(note);
+      const noteH = isArp ? 6 : 5.5;
       const noteY = (lane.bottom - 4) - norm * (lane.height - 13) - noteH;
       return { y: noteY, h: noteH };
     }
@@ -951,14 +965,15 @@ document.addEventListener('DOMContentLoaded', () => {
           alpha *= 0.2;
         }
 
+        const isArp = isArpeggioOrPlucked(note);
         ctx.globalAlpha = alpha;
         ctx.fillStyle = isCurrentlyPlaying ? colors.hit : colors.fill;
         ctx.strokeStyle = colors.stroke;
-        ctx.lineWidth = 1;
+        ctx.lineWidth = isArp ? 1.25 : 1;
 
-        if (vel >= 0.85) {
+        if (isArp || vel >= 0.85) {
           ctx.shadowColor = colors.glow;
-          ctx.shadowBlur = (vel - 0.7) * 15;
+          ctx.shadowBlur = isArp ? 8 : (vel - 0.7) * 15;
         } else {
           ctx.shadowBlur = 0;
         }
