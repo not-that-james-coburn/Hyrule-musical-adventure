@@ -1,6 +1,7 @@
 {
-  "name": "hyrule-field-sequencer",
+  "name": "hyrule-sequencer",
   "version": "1.0.0",
+  "description": "The interactive score of The Legend of Zelda: Ocarina of Time",
   "type": "module",
   "scripts": {
     "dev": "vite",

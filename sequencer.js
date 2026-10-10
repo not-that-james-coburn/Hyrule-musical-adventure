@@ -984,7 +984,7 @@ export class HyruleSequencer {
       this.pendingStateChange = 'QUIET';
       this.requeueUpcomingPhrase('QUIET');
     } else if (newState === 'EXPLORATION' && this.currentState === 'QUIET') {
-      // Immediate volume crossfade mid-bar into active Run mode
+      // Immediate volume crossfade mid-bar into active Explore mode
       this.linkMovementState = 'RUNNING';
       this.executeMovementCrossfade('EXPLORATION');
       this.currentState = 'EXPLORATION';
@@ -1006,7 +1006,7 @@ export class HyruleSequencer {
   }
 
   /**
-   * Mid-bar real-time volume crossfade for Run vs Rest mode dynamic instrumentation
+   * Mid-bar real-time volume crossfade for Explore vs Rest mode dynamic instrumentation
    */
   executeMovementCrossfade(target = this.linkMovementState) {
     const now = Tone.now();
@@ -1031,7 +1031,7 @@ export class HyruleSequencer {
       percGain.linearRampToValueAtTime(0.0, now + fadeTime);
       harpGain.linearRampToValueAtTime(1.0, now + fadeTime);
     } else {
-      // Run mode: lead melody soars, percussion drives forward, harp muted
+      // Explore mode: lead melody soars, percussion drives forward, harp muted
       if (melodyGain) melodyGain.linearRampToValueAtTime(1.0, now + fadeTime);
       percGain.linearRampToValueAtTime(1.0, now + fadeTime);
       harpGain.linearRampToValueAtTime(0.0, now + fadeTime);
@@ -1775,7 +1775,7 @@ export class HyruleSequencer {
         nextBlock = blockMap.BATTLE_OUTRO;
         this.postBattleState = (Math.random() < 0.6) ? 'EXPLORATION' : 'QUIET';
       } else if (this.currentBlock === blockMap.BATTLE_OUTRO) {
-        // Victory fanfare completed -> resolve into postBattleState (Run or Rest)
+        // Victory fanfare completed -> resolve into postBattleState (Explore or Rest)
         const target = this.postBattleState || 'EXPLORATION';
         this.postBattleState = null;
         this.currentState = target;
@@ -1785,7 +1785,7 @@ export class HyruleSequencer {
         this.blocksSinceLastBattle = 0;
         nextBlock = (target === 'QUIET') ? this.quietBag.next(this.currentBlock) : this.explorationBag.next(this.currentBlock);
       } else {
-        // Active in EXPLORATION (Run) or QUIET (Rest)
+        // Active in EXPLORATION (Explore) or QUIET (Rest)
         this.currentModeBlocksRemaining--;
         if (typeof this.blocksSinceLastBattle !== 'number') this.blocksSinceLastBattle = 0;
         this.blocksSinceLastBattle++;
@@ -1804,7 +1804,7 @@ export class HyruleSequencer {
             this.pendingStateChange = 'BATTLE';
             this.blocksSinceLastBattle = 0;
           } else {
-            // Smoothly alternate between Run and Rest
+            // Smoothly alternate between Explore and Rest
             if (this.currentState === 'EXPLORATION') {
               this.currentState = 'QUIET';
               this.pendingStateChange = 'QUIET';
