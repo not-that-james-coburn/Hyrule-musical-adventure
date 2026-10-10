@@ -3,7 +3,6 @@ import {
   changeGameMode,
   getActiveCueInfo,
   getStreamNotes,
-  prunePastStreamNotes,
   getMeasureLines,
   whenAudioLoaded,
   sequencer,
@@ -401,30 +400,29 @@ document.addEventListener('DOMContentLoaded', () => {
       hasStarted = true;
       isMenuOpen = false;
 
-      // Unlock AudioContext & start sequencer with runway lead-in
-      await Tone.start();
-      try {
-        if (Tone.getContext()) {
-          Tone.getContext().lookAhead = 0.25;
-        }
-      } catch (e) {}
-      initBackgroundAudioKeeper();
-      playBackgroundKeeper();
-      await changeGameMode('EXPLORATION');
-      updateActiveModeUi('EXPLORATION');
-
-      // Slide splash overlay out of view
+      // Slide splash overlay out of view immediately
       if (playOverlay) {
         playOverlay.classList.add('slide-out');
       }
 
-      // Unlock controls
+      // Unlock controls immediately so UI is responsive
       if (autoplayToggleBtn) autoplayToggleBtn.disabled = false;
       if (fullscreenBtn) fullscreenBtn.disabled = false;
       if (menuBtn) menuBtn.disabled = false;
       if (modeExploreBtn) modeExploreBtn.disabled = false;
       if (modeRestBtn) modeRestBtn.disabled = false;
       if (modeBattleBtn) modeBattleBtn.disabled = false;
+
+      // Unlock AudioContext & start sequencer with runway lead-in
+      try {
+        await Tone.start();
+        initBackgroundAudioKeeper();
+        playBackgroundKeeper();
+        await changeGameMode('EXPLORATION');
+        updateActiveModeUi('EXPLORATION');
+      } catch (err) {
+        console.error('Audio initialization error:', err);
+      }
     });
   }
 
@@ -789,10 +787,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Zero-allocation note layout and color resolver: computes and caches y, h, and colors once per note
   function ensureNoteLayoutAndColors(note) {
-    if (note._y !== undefined) return;
+    if (!note) return;
+    if (note._y !== undefined && note._colors !== undefined) return;
 
     const track = note.trackType || 'melody';
-    const isArp = Boolean(note.isArp);
+    const isArp = Boolean(note.isArp) || (track === 'harmony' && (
+      note.instrument === 'harp' || note.instrument === 'piano' ||
+      note.instrument === 'marimba' || note.instrument === 'vibraphone' ||
+      note.channel === 6
+    ));
 
     if (track === 'melody') {
       const lane = LANES.melody;
@@ -837,134 +840,128 @@ document.addEventListener('DOMContentLoaded', () => {
     const colorTrack = isArp ? 'harmony_arpeggio' : track;
     const mode = note.mode || 'EXPLORATION';
     const trackColors = NOTE_COLORS[colorTrack] || NOTE_COLORS.melody;
-    note._colors = trackColors[mode] || trackColors.EXPLORATION;
+    note._colors = trackColors[mode] || trackColors.EXPLORATION || NOTE_COLORS.melody.EXPLORATION;
   }
 
   let lastVisualizerSec = 0;
 
   // Animation Loop: Renders 60 FPS continuous right-to-left note conveyor with latency sync
   function renderVisualizer() {
-    // If the browser tab/app is completely hidden (minimized on mobile or background tab),
-    // skip canvas draw commands to save 100% CPU for Web Audio synthesis!
-    if (document.hidden) {
+    try {
+      // If the browser tab/app is completely hidden (minimized on mobile or background tab),
+      // skip canvas draw commands to save 100% CPU for Web Audio synthesis!
+      if (document.hidden) {
+        return;
+      }
+
+      const transport = Tone.getTransport();
+      const isPlaying = transport && (transport.state === 'started' || transport.state === 'running');
+
+      // Audio-to-Visual Latency Sync Compensation
+      let visualizerSec = lastVisualizerSec;
+      if (isPlaying || (transport && transport.state === 'paused')) {
+        const rawCtx = Tone.getContext() ? Tone.getContext().rawContext : null;
+        const outputLat = (rawCtx && typeof rawCtx.outputLatency === 'number') ? rawCtx.outputLatency : 0.035;
+        const baseLat = (rawCtx && typeof rawCtx.baseLatency === 'number') ? rawCtx.baseLatency : 0.02;
+        const audioLatency = outputLat + baseLat + 0.015;
+        visualizerSec = Math.max(0, transport.seconds - audioLatency);
+        lastVisualizerSec = visualizerSec;
+      }
+
+      const cueInfo = getActiveCueInfo();
+
+      // Sync active mode button UI when mode changes (e.g. via Autoplay or deferred branch)
+      if (cueInfo && cueInfo.currentMode && cueInfo.currentMode !== lastSyncedMode) {
+        lastSyncedMode = cueInfo.currentMode;
+        updateActiveModeUi(lastSyncedMode);
+      }
+
+      // Draw Note Stream Canvas
+      if (canvas && ctx) {
+        const cssWidth = cachedCanvasWidth;
+        const cssHeight = cachedCanvasHeight;
+
+        // Clear Canvas Background
+        ctx.fillStyle = '#080c10';
+        ctx.fillRect(0, 0, cssWidth, cssHeight);
+
+        // Draw background grid & lane separators
+        drawCanvasBackground(ctx, cssWidth, cssHeight, visualizerSec);
+
+        // Draw streaming notes traveling right to left
+        const streamNotes = getStreamNotes();
+        let activeNotesHitCount = 0;
+        let activeHitVelocitySum = 0;
+
+        if (Array.isArray(streamNotes)) {
+          for (let i = 0; i < streamNotes.length; i++) {
+            const note = streamNotes[i];
+            if (!note) continue;
+
+            const noteX = PLAYHEAD_X + (note.transportTime - visualizerSec) * PIXELS_PER_SEC;
+            const noteW = Math.max(5, (note.duration * PIXELS_PER_SEC) - 2);
+
+            // Cull notes outside visible viewport
+            if (noteX + noteW < 0 || noteX > cssWidth + 60) {
+              continue;
+            }
+
+            ensureNoteLayoutAndColors(note);
+            const y = (typeof note._y === 'number') ? note._y : 30;
+            const h = (typeof note._h === 'number') ? note._h : 6;
+            const colors = note._colors || NOTE_COLORS.melody.EXPLORATION;
+            const isArp = Boolean(note.isArp);
+            const vel = (typeof note.velocity === 'number') ? Math.max(0.1, Math.min(1.0, note.velocity)) : 0.8;
+
+            const isPercMuted = (note.trackType === 'percussion' && cueInfo.currentMode === 'QUIET');
+
+            const isCurrentlyPlaying = isPlaying &&
+              (note.transportTime <= visualizerSec) &&
+              ((note.transportTime + note.duration) >= visualizerSec) &&
+              !isPercMuted;
+
+            if (isCurrentlyPlaying) {
+              activeNotesHitCount++;
+              activeHitVelocitySum += vel;
+            }
+
+            let alpha = 0.65 + 0.35 * vel;
+            // Alpha fade out as notes pass playhead towards left margin
+            if (noteX < PLAYHEAD_X) {
+              alpha *= Math.max(0.12, (noteX + noteW) / (PLAYHEAD_X + noteW));
+            }
+
+            // When in Rest mode, percussion is muted: render faint ghost notes
+            if (isPercMuted) {
+              alpha *= 0.2;
+            }
+
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = isCurrentlyPlaying ? colors.hit : colors.fill;
+            ctx.strokeStyle = colors.stroke;
+            ctx.lineWidth = isArp ? 1.5 : 1;
+
+            ctx.beginPath();
+            if (typeof ctx.roundRect === 'function') {
+              ctx.roundRect(noteX, y, noteW, h, 2.5);
+            } else {
+              ctx.rect(noteX, y, noteW, h);
+            }
+            ctx.fill();
+            ctx.stroke();
+          }
+        }
+
+        ctx.globalAlpha = 1.0;
+
+        // Draw Playhead line and active collision sparks
+        drawPlayhead(ctx, cssHeight, activeNotesHitCount > 0, cueInfo, activeHitVelocitySum);
+      }
+    } catch (err) {
+      console.error('Visualizer render error:', err);
+    } finally {
       requestAnimationFrame(renderVisualizer);
-      return;
     }
-
-    const transport = Tone.getTransport();
-    const isPlaying = transport && (transport.state === 'started' || transport.state === 'running');
-
-    // Audio-to-Visual Latency Sync Compensation
-    let visualizerSec = lastVisualizerSec;
-    if (isPlaying) {
-      const rawCtx = Tone.getContext().rawContext;
-      const outputLat = (rawCtx && typeof rawCtx.outputLatency === 'number') ? rawCtx.outputLatency : 0.035;
-      const baseLat = (rawCtx && typeof rawCtx.baseLatency === 'number') ? rawCtx.baseLatency : 0.02;
-      const audioLatency = outputLat + baseLat + 0.015;
-      visualizerSec = Math.max(0, transport.seconds - audioLatency);
-      lastVisualizerSec = visualizerSec;
-    } else if (transport && transport.state === 'paused') {
-      // While paused, stay exactly at the paused transport position instead of resetting to 0!
-      const rawCtx = Tone.getContext().rawContext;
-      const outputLat = (rawCtx && typeof rawCtx.outputLatency === 'number') ? rawCtx.outputLatency : 0.035;
-      const baseLat = (rawCtx && typeof rawCtx.baseLatency === 'number') ? rawCtx.baseLatency : 0.02;
-      const audioLatency = outputLat + baseLat + 0.015;
-      visualizerSec = Math.max(0, transport.seconds - audioLatency);
-      lastVisualizerSec = visualizerSec;
-    }
-
-    const cueInfo = getActiveCueInfo();
-
-    // Sync active mode button UI when mode changes (e.g. via Autoplay or deferred branch)
-    if (cueInfo && cueInfo.currentMode && cueInfo.currentMode !== lastSyncedMode) {
-      lastSyncedMode = cueInfo.currentMode;
-      updateActiveModeUi(lastSyncedMode);
-    }
-
-    // Draw Note Stream Canvas
-    if (canvas && ctx) {
-      const cssWidth = cachedCanvasWidth;
-      const cssHeight = cachedCanvasHeight;
-
-      // Clear Canvas Background
-      ctx.fillStyle = '#080c10';
-      ctx.fillRect(0, 0, cssWidth, cssHeight);
-
-      // Draw background grid & lane separators
-      drawCanvasBackground(ctx, cssWidth, cssHeight, visualizerSec);
-
-      // Draw streaming notes traveling right to left
-      const streamNotes = getStreamNotes();
-      let activeNotesHitCount = 0;
-      let activeHitVelocitySum = 0;
-
-      for (let i = 0; i < streamNotes.length; i++) {
-        const note = streamNotes[i];
-        const noteX = PLAYHEAD_X + (note.transportTime - visualizerSec) * PIXELS_PER_SEC;
-        const noteW = Math.max(5, (note.duration * PIXELS_PER_SEC) - 2);
-
-        // Cull notes outside visible viewport
-        if (noteX + noteW < 0 || noteX > cssWidth + 60) {
-          continue;
-        }
-
-        ensureNoteLayoutAndColors(note);
-        const y = note._y;
-        const h = note._h;
-        const colors = note._colors;
-        const isArp = note.isArp;
-        const vel = (typeof note.velocity === 'number') ? Math.max(0.1, Math.min(1.0, note.velocity)) : 0.8;
-
-        const isPercMuted = (note.trackType === 'percussion' && cueInfo.currentMode === 'QUIET');
-
-        const isCurrentlyPlaying = isPlaying &&
-          (note.transportTime <= visualizerSec) &&
-          ((note.transportTime + note.duration) >= visualizerSec) &&
-          !isPercMuted;
-
-        if (isCurrentlyPlaying) {
-          activeNotesHitCount++;
-          activeHitVelocitySum += vel;
-        }
-
-        let alpha = 0.65 + 0.35 * vel;
-        // Alpha fade out as notes pass playhead towards left margin
-        if (noteX < PLAYHEAD_X) {
-          alpha *= Math.max(0.12, (noteX + noteW) / (PLAYHEAD_X + noteW));
-        }
-
-        // When in Rest mode, percussion is muted: render faint ghost notes
-        if (isPercMuted) {
-          alpha *= 0.2;
-        }
-
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = isCurrentlyPlaying ? colors.hit : colors.fill;
-        ctx.strokeStyle = colors.stroke;
-        ctx.lineWidth = isArp ? 1.5 : 1;
-
-        ctx.beginPath();
-        if (typeof ctx.roundRect === 'function') {
-          ctx.roundRect(noteX, y, noteW, h, 2.5);
-        } else {
-          ctx.rect(noteX, y, noteW, h);
-        }
-        ctx.fill();
-        ctx.stroke();
-      }
-
-      ctx.globalAlpha = 1.0;
-
-      // Draw Playhead line and active collision sparks
-      drawPlayhead(ctx, cssHeight, activeNotesHitCount > 0, cueInfo, activeHitVelocitySum);
-
-      // Periodically prune expired notes from visualizer stream to keep array bounded
-      if (streamNotes.length > 200) {
-        prunePastStreamNotes(visualizerSec);
-      }
-    }
-
-    requestAnimationFrame(renderVisualizer);
   }
 
   function drawCanvasBackground(ctx, width, height, currentTransportSec) {

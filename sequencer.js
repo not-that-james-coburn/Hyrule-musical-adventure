@@ -1,12 +1,5 @@
 import * as Tone from 'tone';
 
-// Configure robust Web Audio lookahead buffer (250ms) to prevent audio underruns and thread-starvation glitches
-try {
-  if (typeof Tone !== 'undefined' && Tone.getContext()) {
-    Tone.getContext().lookAhead = 0.25;
-  }
-} catch (e) {}
-
 // Track active block timing constants
 export const BARS_PER_BLOCK = 8;
 export const BLOCK_DURATION_SEC = 12.8; // 8 bars * 4 beats * (60 / 150 BPM)
@@ -789,15 +782,22 @@ export class HyruleSequencer {
 
   triggerSafeNote(sampler, note, durationSec, time) {
     if (!this.soundRack) return;
-    const now = Tone.now();
 
-    // Stale Note Protection: if an event arrived more than 100ms late due to main thread stutter or backgrounding,
-    // drop it rather than firing a machine-gun burst at `now` that causes perceived audio speeding-up and voice choking
-    if (time < now - 0.10) {
+    // Use Web Audio hardware clock time for sample-accurate scheduling
+    const rawCtx = Tone.getContext() ? Tone.getContext().rawContext : null;
+    const currentTime = rawCtx ? rawCtx.currentTime : Tone.immediate();
+
+    // Stale Note Protection: if an event arrived significantly late (e.g. > 150ms in the past due to background tab throttling),
+    // drop it rather than firing a machine-gun burst when waking up.
+    if (typeof time === 'number' && time < currentTime - 0.15) {
       return;
     }
 
-    const safeTime = Math.max(time, now);
+    // Schedule sample-accurately at `time` (or immediately if slightly behind hardware clock)
+    const safeTime = (typeof time === 'number' && !isNaN(time))
+      ? Math.max(time, currentTime)
+      : currentTime;
+
     const dur = Math.max(0.04, Math.min(12.0, durationSec));
     const vel = (typeof note.velocity === 'number' && !isNaN(note.velocity))
       ? Math.max(0.01, Math.min(1.0, note.velocity))
