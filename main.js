@@ -282,7 +282,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Pause audio so user can read About technical background in quiet
       if (hasStarted) {
-        await pausePlayback();
+        try {
+          await pausePlayback();
+        } catch (err) {
+          console.warn('Error pausing playback:', err);
+        }
         pauseBackgroundKeeper();
       }
     } else if (tabName === 'sound') {
@@ -299,7 +303,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Resume audio so user can hear real-time adjustments before exiting menu
       if (hasStarted) {
-        await resumePlayback();
+        try {
+          await resumePlayback();
+        } catch (err) {
+          console.warn('Error resuming playback:', err);
+        }
         playBackgroundKeeper();
       }
     }
@@ -311,12 +319,19 @@ document.addEventListener('DOMContentLoaded', () => {
     isMenuOpen = true;
     wasAutoPausedByMinimize = false;
 
-    // Switch to target tab (handles audio pausing for 'about' or resuming for 'sound')
-    await switchMenuTab(targetTab);
-
-    // Show menu modal dialog
+    // Show menu modal dialog immediately so UI responds instantly
     if (menuModal) {
       menuModal.style.display = 'flex';
+    }
+    if (menuBtn) {
+      menuBtn.classList.add('active');
+    }
+
+    // Switch to target tab (handles audio pausing for 'about' or resuming for 'sound')
+    try {
+      await switchMenuTab(targetTab);
+    } catch (err) {
+      console.warn('Error in switchMenuTab:', err);
     }
 
     // Push browser history state for seamless browser back button navigation
@@ -348,7 +363,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Ensure audio is running upon exiting menu
-    await resumePlayback();
+    try {
+      await resumePlayback();
+    } catch (err) {
+      console.warn('Error resuming playback:', err);
+    }
     playBackgroundKeeper();
   }
 
@@ -657,7 +676,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.Tone = Tone;
   window.sequencer = sequencer;
-  window.HyruleSequencer = HyruleSequencer;
+  if (typeof sequencer !== 'undefined' && sequencer.constructor) {
+    window.HyruleSequencer = sequencer.constructor;
+  }
 
   // -------------------------------------------------------------
   // CONTINUOUS RIGHT-TO-LEFT STREAMING NOTE VISUALIZER (CANVAS)

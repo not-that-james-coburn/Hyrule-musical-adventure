@@ -1992,12 +1992,16 @@ export class HyruleSequencer {
   async pausePlayback() {
     // 1. Immediately pause Tone.Transport
     const transport = Tone.getTransport();
-    if (transport && transport.state === 'started') {
-      transport.pause();
+    if (transport && (transport.state === 'started' || transport.state === 'running')) {
+      try {
+        transport.pause();
+      } catch (e) {}
     }
 
     // 2. Instant mute to prevent residual ringing tails or reverb hangover
-    Tone.getDestination().mute = true;
+    try {
+      Tone.getDestination().mute = true;
+    } catch (e) {}
     if (this.masterPreBus) {
       try {
         this.masterPreBus.gain.cancelScheduledValues(Tone.now());
@@ -2015,12 +2019,12 @@ export class HyruleSequencer {
     }
 
     // 4. Suspend AudioContext so audio hardware clock freezes and does NOT run ahead of Transport timeline
-    const rawCtx = Tone.getContext().rawContext;
-    if (rawCtx && typeof rawCtx.suspend === 'function' && rawCtx.state === 'running') {
-      try {
+    try {
+      const rawCtx = Tone.getContext() ? Tone.getContext().rawContext : null;
+      if (rawCtx && typeof rawCtx.suspend === 'function' && rawCtx.state === 'running') {
         await rawCtx.suspend();
-      } catch (e) {}
-    }
+      }
+    } catch (e) {}
   }
 
   /**
@@ -2028,15 +2032,17 @@ export class HyruleSequencer {
    */
   async resumePlayback() {
     // 1. Resume AudioContext so hardware audio time unfreezes exactly where it stopped
-    const rawCtx = Tone.getContext().rawContext;
-    if (rawCtx && typeof rawCtx.resume === 'function' && rawCtx.state === 'suspended') {
-      try {
+    try {
+      const rawCtx = Tone.getContext() ? Tone.getContext().rawContext : null;
+      if (rawCtx && typeof rawCtx.resume === 'function' && rawCtx.state === 'suspended') {
         await rawCtx.resume();
-      } catch (e) {}
-    }
+      }
+    } catch (e) {}
 
     // 2. Unmute destination & restore masterPreBus
-    Tone.getDestination().mute = false;
+    try {
+      Tone.getDestination().mute = false;
+    } catch (e) {}
     if (this.masterPreBus) {
       try {
         this.masterPreBus.gain.cancelScheduledValues(Tone.now());
@@ -2046,8 +2052,10 @@ export class HyruleSequencer {
 
     // 3. Resume Tone.Transport
     const transport = Tone.getTransport();
-    if (transport && transport.state !== 'started') {
-      transport.start();
+    if (transport && transport.state !== 'started' && transport.state !== 'running') {
+      try {
+        transport.start();
+      } catch (e) {}
     }
   }
 
